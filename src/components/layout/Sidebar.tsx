@@ -79,8 +79,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
       <div className="p-4 border-t border-white/10 bg-forest-950/60 shrink-0">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-forest-800 text-emerald-300 flex items-center justify-center font-bold text-xs shrink-0 border border-forest-700">
-              {user?.full_name?.charAt(0).toUpperCase() || <User className="w-4 h-4" />}
+            <div className="w-8 h-8 rounded-full bg-forest-800 text-emerald-300 flex items-center justify-center font-bold text-xs shrink-0 border border-forest-700 overflow-hidden">
+              {user?.avatar_url ? (
+                <img
+                  src={user.avatar_url}
+                  alt={user.full_name || 'User avatar'}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                user?.full_name?.charAt(0).toUpperCase() || <User className="w-4 h-4" />
+              )}
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold text-white truncate">

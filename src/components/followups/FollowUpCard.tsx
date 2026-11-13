@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Edit2, Trash2, ArrowRight } from 'lucide-react';
 import type { FollowUpItem, FollowUpStatus } from '../../types/followup';
 import { Badge, getStatusBadgeVariant } from '../common/Badge';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { formatDateDisplay } from '../../utils/dateUtils';
 import { useWorkLog } from '../../context/WorkLogContext';
+import { FollowUpDetailModal } from './FollowUpDetailModal';
 
 interface FollowUpCardProps {
   item: FollowUpItem;
@@ -30,8 +31,33 @@ export const FollowUpCard: React.FC<FollowUpCardProps> = ({
   const { deleteFollowUp, updateFollowUp, entries } = useWorkLog();
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+
+  const descRef = useRef<HTMLParagraphElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
 
   const linkedEntry = entries.find((e) => e.id === item.record_id);
+
+  // Detect if description text exceeds 2 lines
+  useEffect(() => {
+    const checkTruncation = () => {
+      if (descRef.current) {
+        const el = descRef.current;
+        const hasOverflow =
+          el.scrollHeight > el.clientHeight + 1 ||
+          (item.description && item.description.split('\n').length > 2);
+        setIsTruncated(hasOverflow);
+      }
+    };
+
+    checkTruncation();
+    const rafId = requestAnimationFrame(checkTruncation);
+    window.addEventListener('resize', checkTruncation);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', checkTruncation);
+    };
+  }, [item.description]);
 
   const handleStatusChange = async (newStatus: FollowUpStatus) => {
     await updateFollowUp(item.id, { status: newStatus });
@@ -46,67 +72,94 @@ export const FollowUpCard: React.FC<FollowUpCardProps> = ({
 
   return (
     <>
-      <div className="bg-white rounded-xl border border-[#E5E9E3] p-4 shadow-2xs hover:border-[#D0D6CE] transition-all">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={getStatusBadgeVariant(item.status)} size="sm">
-              {item.status}
-            </Badge>
-
-            {item.priority && (
-              <Badge
-                variant={
-                  item.priority === 'high'
-                    ? 'danger'
-                    : item.priority === 'medium'
-                    ? 'warning'
-                    : 'default'
-                }
-                size="sm"
-              >
-                {item.priority === 'high'
-                  ? 'High Priority'
-                  : item.priority === 'medium'
-                  ? 'Medium Priority'
-                  : 'Low Priority'}
+      <div className="bg-white rounded-xl border border-[#E5E9E3] p-4 shadow-2xs hover:border-[#D0D6CE] transition-all flex flex-col justify-between min-h-[145px]">
+        <div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={getStatusBadgeVariant(item.status)} size="sm">
+                {item.status}
               </Badge>
-            )}
 
-            {item.due_date && (
-              <span className="inline-flex items-center gap-1 text-xs text-[#737C74] font-medium">
-                <Calendar className="w-3.5 h-3.5 text-[#737C74]" />
-                <span>Due: {formatDateDisplay(item.due_date)}</span>
-              </span>
-            )}
+              {item.priority && (
+                <Badge
+                  variant={
+                    item.priority === 'high'
+                      ? 'danger'
+                      : item.priority === 'medium'
+                      ? 'warning'
+                      : 'default'
+                  }
+                  size="sm"
+                >
+                  {item.priority === 'high'
+                    ? 'High Priority'
+                    : item.priority === 'medium'
+                    ? 'Medium Priority'
+                    : 'Low Priority'}
+                </Badge>
+              )}
+
+              {item.due_date && (
+                <span className="inline-flex items-center gap-1 text-xs text-[#737C74] font-medium">
+                  <Calendar className="w-3.5 h-3.5 text-[#737C74]" />
+                  <span>Due: {formatDateDisplay(item.due_date)}</span>
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onEdit(item)}
+                className="p-1.5 rounded-md text-[#737C74] hover:text-[#252B27] hover:bg-[#F2F5F0] transition-colors cursor-pointer"
+                title="Edit follow-up"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowConfirm(true)}
+                className="p-1.5 rounded-md text-[#737C74] hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                title="Delete follow-up"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => onEdit(item)}
-              className="p-1.5 rounded-md text-[#737C74] hover:text-[#252B27] hover:bg-[#F2F5F0] transition-colors cursor-pointer"
-              title="Edit follow-up"
+          <h4 className="text-sm font-semibold text-[#252B27] mt-2.5 leading-snug">
+            {item.title}
+          </h4>
+
+          {item.description && (
+            <div
+              onClick={() => {
+                if (isTruncated) setShowDetailModal(true);
+              }}
+              className={isTruncated ? 'cursor-pointer group' : ''}
+              title={isTruncated ? 'Click to view full description and details' : undefined}
             >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowConfirm(true)}
-              className="p-1.5 rounded-md text-[#737C74] hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
-              title="Delete follow-up"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+              <p
+                ref={descRef}
+                className="text-xs text-[#737C74] mt-1 leading-relaxed line-clamp-2 whitespace-pre-line"
+              >
+                {item.description}
+              </p>
+              {isTruncated && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDetailModal(true);
+                  }}
+                  className="mt-0.5 text-xs font-semibold text-forest-700 hover:text-forest-900 inline-flex items-center gap-0.5 cursor-pointer transition-colors"
+                >
+                  <span>... (more)</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
-
-        <h4 className="text-sm font-semibold text-[#252B27] mt-2.5 leading-snug">
-          {item.title}
-        </h4>
-
-        {item.description && (
-          <p className="text-xs text-[#737C74] mt-1 leading-relaxed">{item.description}</p>
-        )}
 
         {/* Footer: Quick status switcher & source entry reference */}
         <div className="mt-3.5 pt-3 border-t border-[#E5E9E3] flex flex-wrap items-center justify-between gap-2">
@@ -150,6 +203,17 @@ export const FollowUpCard: React.FC<FollowUpCardProps> = ({
         isLoading={isDeleting}
         onConfirm={handleDelete}
         onCancel={() => setShowConfirm(false)}
+      />
+
+      <FollowUpDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        item={item}
+        onEdit={(fu) => {
+          setShowDetailModal(false);
+          onEdit(fu);
+        }}
+        onOpenSourceEntry={onOpenSourceEntry}
       />
     </>
   );

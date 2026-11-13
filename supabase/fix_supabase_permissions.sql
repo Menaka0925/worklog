@@ -11,6 +11,9 @@ GRANT ALL ON TABLE public.records TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.follow_ups TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.user_profiles TO anon, authenticated, service_role;
 
+-- Ensure avatar_url column exists in user_profiles
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
 -- 3. Ensure custom_fields table exists with RLS & grants
 CREATE TABLE IF NOT EXISTS public.custom_fields (
   id TEXT PRIMARY KEY,

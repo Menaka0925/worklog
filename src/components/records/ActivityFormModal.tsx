@@ -138,7 +138,7 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
       console.error('Error saving record entry:', err);
       setErrors((prev) => ({
         ...prev,
-        form: err instanceof Error ? err.message : 'Failed to save record to Supabase.',
+        form: err instanceof Error ? err.message : 'Failed to save record',
       }));
     } finally {
       setIsSubmitting(false);
@@ -229,10 +229,9 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className={`block w-full rounded-lg border text-sm p-3 bg-white text-[#252B27] placeholder:text-[#737C74]/60 transition-colors
-                ${
-                  errors.description
-                    ? 'border-rose-400 focus:border-rose-600 focus:ring-1 focus:ring-rose-600'
-                    : 'border-[#E5E9E3] focus:border-forest-600 focus:ring-1 focus:ring-forest-600'
+                ${errors.description
+                  ? 'border-rose-400 focus:border-rose-600 focus:ring-1 focus:ring-rose-600'
+                  : 'border-[#E5E9E3] focus:border-forest-600 focus:ring-1 focus:ring-forest-600'
                 }
               `}
               required
@@ -434,12 +433,12 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
                           cf.field_type === 'number'
                             ? 'number'
                             : cf.field_type === 'date'
-                            ? 'date'
-                            : cf.field_type === 'time'
-                            ? 'time'
-                            : cf.field_type === 'email'
-                            ? 'email'
-                            : 'text'
+                              ? 'date'
+                              : cf.field_type === 'time'
+                                ? 'time'
+                                : cf.field_type === 'email'
+                                  ? 'email'
+                                  : 'text'
                         }
                         placeholder={`Enter ${cf.name}...`}
                         value={val}

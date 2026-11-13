@@ -241,7 +241,7 @@ export const RecordPage: React.FC = () => {
       </div>
 
       {/* List of Activities */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         {filterMode === 'all' && groupedEntriesByDate.length > 0 ? (
           // Grouped by date in 'All Records' mode
           groupedEntriesByDate.map(([dateKey, groupEntries]) => (
@@ -255,7 +255,7 @@ export const RecordPage: React.FC = () => {
                   ({groupEntries.length})
                 </span>
               </div>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {groupEntries.map((entry) => (
                   <ActivityCard
                     key={entry.id}
@@ -267,17 +267,19 @@ export const RecordPage: React.FC = () => {
               </div>
             </div>
           ))
-        ) : (
-          // Single day list
-          sortedEntries.map((entry) => (
-            <ActivityCard
-              key={entry.id}
-              entry={entry}
-              onEdit={handleEditNote}
-              onAddFollowUp={handleAddFollowUp}
-            />
-          ))
-        )}
+        ) : sortedEntries.length > 0 ? (
+          // Single day list (2 records per row)
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {sortedEntries.map((entry) => (
+              <ActivityCard
+                key={entry.id}
+                entry={entry}
+                onEdit={handleEditNote}
+                onAddFollowUp={handleAddFollowUp}
+              />
+            ))}
+          </div>
+        ) : null}
 
         {/* Empty State */}
         {sortedEntries.length === 0 && (

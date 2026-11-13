@@ -349,26 +349,28 @@ export const SearchPage: React.FC = () => {
       </div>
 
       {/* Results List */}
-      <div className="space-y-3.5">
+      <div>
         {activeTab === 'records' ? (
           <>
-            {filteredEntries.map((entry) => (
-              <ActivityCard
-                key={entry.id}
-                entry={entry}
-                onEdit={(e) => {
-                  setEntryToEdit(e);
-                  setIsEditModalOpen(true);
-                }}
-                onAddFollowUp={(e) => {
-                  setLinkedEntryForFollowUp(e);
-                  setFollowUpToEdit(null);
-                  setIsFollowUpModalOpen(true);
-                }}
-              />
-            ))}
-
-            {filteredEntries.length === 0 && (
+            {filteredEntries.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredEntries.map((entry) => (
+                  <ActivityCard
+                    key={entry.id}
+                    entry={entry}
+                    onEdit={(e) => {
+                      setEntryToEdit(e);
+                      setIsEditModalOpen(true);
+                    }}
+                    onAddFollowUp={(e) => {
+                      setLinkedEntryForFollowUp(e);
+                      setFollowUpToEdit(null);
+                      setIsFollowUpModalOpen(true);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
               <div className="bg-white rounded-xl border border-dashed border-[#D5DAD3] p-12 text-center">
                 <SearchIcon className="w-8 h-8 text-[#737C74] mx-auto mb-2" />
                 <h4 className="text-sm font-semibold text-[#252B27]">No matching activities found</h4>
@@ -390,26 +392,28 @@ export const SearchPage: React.FC = () => {
           </>
         ) : (
           <>
-            {filteredFollowUps.map((item) => (
-              <FollowUpCard
-                key={item.id}
-                item={item}
-                onEdit={(fu) => {
-                  setFollowUpToEdit(fu);
-                  setLinkedEntryForFollowUp(null);
-                  setIsFollowUpModalOpen(true);
-                }}
-                onOpenSourceEntry={(recordId) => {
-                  const found = entries.find((e) => e.id === recordId);
-                  if (found) {
-                    setSelectedRecordForDetail(found);
-                    setIsDetailModalOpen(true);
-                  }
-                }}
-              />
-            ))}
-
-            {filteredFollowUps.length === 0 && (
+            {filteredFollowUps.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredFollowUps.map((item) => (
+                  <FollowUpCard
+                    key={item.id}
+                    item={item}
+                    onEdit={(fu) => {
+                      setFollowUpToEdit(fu);
+                      setLinkedEntryForFollowUp(null);
+                      setIsFollowUpModalOpen(true);
+                    }}
+                    onOpenSourceEntry={(recordId) => {
+                      const found = entries.find((e) => e.id === recordId);
+                      if (found) {
+                        setSelectedRecordForDetail(found);
+                        setIsDetailModalOpen(true);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
               <div className="bg-white rounded-xl border border-dashed border-[#D5DAD3] p-12 text-center">
                 <SearchIcon className="w-8 h-8 text-[#737C74] mx-auto mb-2" />
                 <h4 className="text-sm font-semibold text-[#252B27]">No matching follow-ups found</h4>

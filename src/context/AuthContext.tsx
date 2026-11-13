@@ -9,6 +9,9 @@ interface AuthContextType {
   signIn: (data: LoginFormData) => Promise<{ error?: string }>;
   signUp: (data: RegisterFormData) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
+  updateAvatar: (avatarUrl: string) => Promise<void>;
+  pauseAccount: (days: number) => Promise<void>;
+  deleteAccountAndAllData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,24 +30,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             data: { session },
           } = await supabase.auth.getSession();
           if (session?.user) {
+            let avatarUrl = session.user.user_metadata?.avatar_url;
+            if (!avatarUrl) {
+              const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('avatar_url')
+                .eq('id', session.user.id)
+                .maybeSingle();
+              if (profile?.avatar_url) {
+                avatarUrl = profile.avatar_url;
+              }
+            }
+
             setUser({
               id: session.user.id,
               email: session.user.email || '',
               full_name:
                 session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+              avatar_url: avatarUrl,
               created_at: session.user.created_at,
             });
           }
 
           const {
             data: { subscription },
-          } = supabase.auth.onAuthStateChange((_event, session) => {
+          } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
+              let avatarUrl = session.user.user_metadata?.avatar_url;
+              if (!avatarUrl) {
+                const { data: profile } = await supabase
+                  .from('user_profiles')
+                  .select('avatar_url')
+                  .eq('id', session.user.id)
+                  .maybeSingle();
+                if (profile?.avatar_url) {
+                  avatarUrl = profile.avatar_url;
+                }
+              }
+
               setUser({
                 id: session.user.id,
                 email: session.user.email || '',
                 full_name:
                   session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+                avatar_url: avatarUrl,
                 created_at: session.user.created_at,
               });
             } else {
@@ -121,6 +150,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+  const updateAvatar = async (avatarUrl: string): Promise<void> => {
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.auth.updateUser({
+          data: { avatar_url: avatarUrl },
+        });
+        if (user?.id) {
+          await supabase
+            .from('user_profiles')
+            .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+        }
+      } catch (err) {
+        console.error('Failed to update avatar in Supabase:', err);
+      }
+    }
+    setUser((prev) => (prev ? { ...prev, avatar_url: avatarUrl } : null));
+  };
+
+  const pauseAccount = async (days: number): Promise<void> => {
+    const pauseUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.auth.updateUser({
+          data: { account_paused_until: pauseUntil },
+        });
+      } catch (err) {
+        console.error('Failed to pause account in Supabase:', err);
+      }
+    }
+    await signOut();
+  };
+
+  const deleteAccountAndAllData = async (): Promise<void> => {
+    if (isSupabaseConfigured() && supabase && user?.id) {
+      try {
+        await Promise.all([
+          supabase.from('records').delete().eq('user_id', user.id),
+          supabase.from('follow_ups').delete().eq('user_id', user.id),
+          supabase.from('user_categories').delete().eq('user_id', user.id),
+          supabase.from('user_custom_fields').delete().eq('user_id', user.id),
+          supabase.from('user_work_profiles').delete().eq('user_id', user.id),
+        ]);
+      } catch (err) {
+        console.error('Error deleting user data:', err);
+      }
+    }
+    await signOut();
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -130,6 +209,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signIn,
         signUp,
         signOut,
+        updateAvatar,
+        pauseAccount,
+        deleteAccountAndAllData,
       }}
     >
       {children}

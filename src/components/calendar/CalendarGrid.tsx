@@ -64,19 +64,25 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     return years;
   }, []);
 
-  // Map total activities and follow-ups count by date: { 'YYYY-MM-DD': number }
-  const entryCountMap = useMemo(() => {
+  // Map records count by date: { 'YYYY-MM-DD': number }
+  const recordCountMap = useMemo(() => {
     const map: Record<string, number> = {};
     for (const e of entries) {
       map[e.activity_date] = (map[e.activity_date] || 0) + 1;
     }
+    return map;
+  }, [entries]);
+
+  // Map follow-ups count by date: { 'YYYY-MM-DD': number }
+  const followUpCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
     for (const f of followUps) {
       if (f.due_date) {
         map[f.due_date] = (map[f.due_date] || 0) + 1;
       }
     }
     return map;
-  }, [entries, followUps]);
+  }, [followUps]);
 
   // Navigation handlers
   const handlePrevMonth = () => {
@@ -285,18 +291,26 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
         </div>
 
         {/* Legend Indicator */}
-        <div className="hidden sm:flex items-center gap-3 text-xs text-[#737C74]">
+        <div className="hidden md:flex flex-wrap items-center gap-3 text-xs text-[#737C74]">
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-[#F5F3E9] border border-[#E5E9E3]" />
+            <span className="w-2.5 h-2.5 rounded-sm bg-[#E8F0E8] border border-[#C2D6C6]" />
+            <span>Records</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-amber-50 border border-amber-200" />
+            <span>Follow-up</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-br from-[#E8F0E8] to-amber-100 border border-[#C8D6C5]" />
+            <span>Both</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-[#F5F3E9] border border-[#E0DDD0]" />
             <span>Today</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-[#244735]" />
             <span>Selected</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#315C46]" />
-            <span>Has Records</span>
           </div>
         </div>
       </div>
@@ -328,52 +342,106 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
           const cellDayNumber = parseInt(dateStr.split('-')[2], 10);
           const isToday = dateStr === todayStr;
           const isSelected = dateStr === selectedDate;
-          const count = entryCountMap[dateStr] || 0;
+
+          const recCount = recordCountMap[dateStr] || 0;
+          const fuCount = followUpCountMap[dateStr] || 0;
+          const totalCount = recCount + fuCount;
+
+          const hasRecords = recCount > 0;
+          const hasFollowUps = fuCount > 0;
+          const hasBoth = hasRecords && hasFollowUps;
+          const hasOnlyRecords = hasRecords && !hasFollowUps;
+          const hasOnlyFollowUps = !hasRecords && hasFollowUps;
+
+          // Compute cell background and border styling based on content
+          let cellStyleClass = '';
+          if (isSelected) {
+            cellStyleClass = 'bg-[#244735] text-white border-[#244735] shadow-xs';
+          } else if (hasBoth) {
+            cellStyleClass =
+              'bg-gradient-to-br from-[#E8F0E8] via-[#F4F1E6] to-amber-100/90 border-[#C8D6C5] hover:border-[#315C46] text-[#252B27]';
+          } else if (hasOnlyRecords) {
+            cellStyleClass =
+              'bg-[#E8F0E8] border-[#C2D6C6] hover:border-[#315C46] text-[#244735]';
+          } else if (hasOnlyFollowUps) {
+            cellStyleClass =
+              'bg-amber-50 border-amber-200/90 hover:border-amber-400 text-amber-950';
+          } else if (isToday) {
+            cellStyleClass =
+              'bg-[#F5F3E9] text-[#252B27] border-[#E0DDD0] hover:border-[#477A61]';
+          } else {
+            cellStyleClass =
+              'bg-white hover:bg-[#F7F9F5] border-[#E5E9E3] hover:border-[#477A61] text-[#252B27]';
+          }
 
           return (
             <div
               key={dateStr}
               onClick={() => onSelectDate(dateStr)}
-              className={`h-14 sm:h-16 md:h-18 rounded-lg border p-1.5 flex flex-col justify-between transition-all cursor-pointer select-none text-left ${
-                isSelected
-                  ? 'bg-[#244735] text-white border-[#244735] shadow-xs'
-                  : isToday
-                  ? 'bg-[#F5F3E9] text-[#252B27] border-[#E5E9E3] hover:border-[#477A61]'
-                  : 'bg-white hover:bg-[#F7F9F5] border-[#E5E9E3] hover:border-[#477A61] text-[#252B27]'
-              }`}
+              className={`h-14 sm:h-16 md:h-18 rounded-lg border p-1.5 flex flex-col justify-between transition-all cursor-pointer select-none text-left ${cellStyleClass}`}
             >
-              {/* Day Number */}
+              {/* Day Number & Count Badge */}
               <div className="flex items-center justify-between">
-                <span
-                  className={`text-xs font-bold leading-none ${
-                    isSelected ? 'text-white' : isToday ? 'text-[#244735]' : 'text-[#252B27]'
-                  }`}
-                >
-                  {cellDayNumber}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span
+                    className={`text-xs font-bold leading-none ${
+                      isSelected
+                        ? 'text-white'
+                        : hasOnlyRecords
+                        ? 'text-[#244735]'
+                        : hasOnlyFollowUps
+                        ? 'text-amber-950'
+                        : hasBoth
+                        ? 'text-[#252B27]'
+                        : isToday
+                        ? 'text-[#244735]'
+                        : 'text-[#252B27]'
+                    }`}
+                  >
+                    {cellDayNumber}
+                  </span>
 
-                {/* Multiple Records Pill Indicator */}
-                {count > 1 && (
+                  {isToday && !isSelected && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-forest-700 bg-white/70 px-1 rounded border border-forest-200/60 leading-none">
+                      Today
+                    </span>
+                  )}
+                </div>
+
+                {/* Multiple Items Count Badge */}
+                {totalCount > 1 && (
                   <span
                     className={`text-[10px] font-semibold px-1 py-0.2 rounded leading-tight ${
                       isSelected
                         ? 'bg-white/20 text-white'
-                        : 'bg-[#E8F0E8] text-[#244735] border border-[#C9DBCC]'
+                        : hasBoth
+                        ? 'bg-white/80 text-[#252B27] border border-[#C8D6C5]'
+                        : hasOnlyRecords
+                        ? 'bg-white/75 text-[#244735] border border-[#C2D6C6]'
+                        : 'bg-white/75 text-amber-900 border border-amber-200'
                     }`}
                   >
-                    {count}
+                    {totalCount}
                   </span>
                 )}
               </div>
 
-              {/* Record Dot Indicator */}
-              <div className="flex items-center justify-end">
-                {count === 1 && (
+              {/* Indicator Dots at Cell Bottom */}
+              <div className="flex items-center justify-end gap-1">
+                {hasRecords && (
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
-                      isSelected ? 'bg-white' : 'bg-[#315C46]'
+                      isSelected ? 'bg-emerald-300' : 'bg-[#315C46]'
                     }`}
-                    title="1 recorded activity"
+                    title={`${recCount} record(s)`}
+                  />
+                )}
+                {hasFollowUps && (
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isSelected ? 'bg-amber-300' : 'bg-amber-600'
+                    }`}
+                    title={`${fuCount} follow-up(s)`}
                   />
                 )}
               </div>

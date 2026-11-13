@@ -5,6 +5,7 @@ import {
   Edit2,
   CheckSquare,
   FileText,
+  Plus
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
@@ -104,7 +105,7 @@ export const RecordDetailModal: React.FC<RecordDetailModalProps> = ({
           <label className="block text-[11px] font-bold uppercase tracking-wider text-[#737C74] mb-1.5">
             Activity Description
           </label>
-          <div className="bg-[#F7F9F5] rounded-xl p-4 border border-[#E5E9E3] text-sm text-[#252B27] whitespace-pre-wrap leading-relaxed font-normal">
+          <div className="bg-[#F7F9F5] rounded-xl p-4 border border-[#E5E9E3] text-sm text-[#252B27] whitespace-pre-wrap leading-relaxed font-normal max-h-48 sm:max-h-56 overflow-y-auto pr-2.5">
             {record.description}
           </div>
         </div>
@@ -182,9 +183,9 @@ export const RecordDetailModal: React.FC<RecordDetailModalProps> = ({
                   </div>
                   <h4 className="text-sm font-bold text-[#252B27]">{fu.title}</h4>
                   {fu.description && (
-                    <p className="text-xs text-[#737C74] leading-relaxed whitespace-pre-line">
+                    <div className="bg-white rounded-lg p-2.5 border border-[#E5E9E3] text-xs text-[#252B27] whitespace-pre-wrap leading-relaxed max-h-32 sm:max-h-36 overflow-y-auto pr-2">
                       {fu.description}
-                    </p>
+                    </div>
                   )}
                 </div>
               ))}
@@ -207,9 +208,9 @@ export const RecordDetailModal: React.FC<RecordDetailModalProps> = ({
                 onClose();
                 onAddFollowUp(record);
               }}
-              leftIcon={<CheckSquare className="w-4 h-4" />}
+              leftIcon={<Plus className="w-4 h-4" />}
             >
-              {linkedFollowUps.length > 0 ? '+ Add Another Follow-up' : 'Add Follow-up'}
+              {linkedFollowUps.length > 0 ? 'Add Another Follow-up' : 'Add Follow-up'}
             </Button>
 
             <Button

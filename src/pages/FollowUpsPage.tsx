@@ -16,6 +16,9 @@ import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { formatDateDisplay } from '../utils/dateUtils';
 import type { FollowUpItem, FollowUpStatus } from '../types/followup';
+import type { RecordEntry } from '../types/record';
+import { RecordDetailModal } from '../components/calendar/RecordDetailModal';
+import { ActivityFormModal } from '../components/records/ActivityFormModal';
 
 const ALL_STATUS_TABS: (FollowUpStatus | 'All')[] = [
   'All',
@@ -29,7 +32,7 @@ const ALL_STATUS_TABS: (FollowUpStatus | 'All')[] = [
 ];
 
 export const FollowUpsPage: React.FC = () => {
-  const { followUps } = useWorkLog();
+  const { followUps, entries } = useWorkLog();
 
   // Status Filter State
   const [activeTab, setActiveTab] = useState<FollowUpStatus | 'All'>('All');
@@ -45,6 +48,12 @@ export const FollowUpsPage: React.FC = () => {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<FollowUpItem | null>(null);
+
+  // Source Record Detail State
+  const [selectedRecordForDetail, setSelectedRecordForDetail] = useState<RecordEntry | null>(null);
+  const [isRecordDetailOpen, setIsRecordDetailOpen] = useState(false);
+  const [recordToEdit, setRecordToEdit] = useState<RecordEntry | null>(null);
+  const [isRecordEditOpen, setIsRecordEditOpen] = useState(false);
 
   // Refs for outside click detection
   const statusDropdownRef = useRef<HTMLDivElement>(null);
@@ -339,7 +348,18 @@ export const FollowUpsPage: React.FC = () => {
       {/* Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredFollowUps.map((item) => (
-          <FollowUpCard key={item.id} item={item} onEdit={handleEdit} />
+          <FollowUpCard
+            key={item.id}
+            item={item}
+            onEdit={handleEdit}
+            onOpenSourceEntry={(recordId) => {
+              const found = entries.find((e) => e.id === recordId);
+              if (found) {
+                setSelectedRecordForDetail(found);
+                setIsRecordDetailOpen(true);
+              }
+            }}
+          />
         ))}
 
         {filteredFollowUps.length === 0 && (
@@ -379,7 +399,7 @@ export const FollowUpsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* Add / Edit Follow-up Modal */}
       <FollowUpFormModal
         isOpen={isModalOpen}
         onClose={() => {
@@ -387,6 +407,33 @@ export const FollowUpsPage: React.FC = () => {
           setItemToEdit(null);
         }}
         followUpToEdit={itemToEdit}
+      />
+
+      {/* Source Record Detail Modal */}
+      <RecordDetailModal
+        isOpen={isRecordDetailOpen}
+        onClose={() => setIsRecordDetailOpen(false)}
+        record={selectedRecordForDetail}
+        onEdit={(rec) => {
+          setIsRecordDetailOpen(false);
+          setRecordToEdit(rec);
+          setIsRecordEditOpen(true);
+        }}
+        onAddFollowUp={() => {
+          setIsRecordDetailOpen(false);
+          setItemToEdit(null);
+          setIsModalOpen(true);
+        }}
+      />
+
+      {/* Activity Edit Modal */}
+      <ActivityFormModal
+        isOpen={isRecordEditOpen}
+        onClose={() => {
+          setIsRecordEditOpen(false);
+          setRecordToEdit(null);
+        }}
+        entryToEdit={recordToEdit}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar as CalendarIcon,
@@ -29,6 +29,10 @@ export const DashboardPage: React.FC = () => {
   const [isAddFollowUpOpen, setIsAddFollowUpOpen] = useState(false);
   const [selectedEntryForFollowUp, setSelectedEntryForFollowUp] = useState<RecordEntry | null>(null);
 
+  const rightColRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [fixedCardHeight, setFixedCardHeight] = useState<number | undefined>(undefined);
+
   const todayStr = getTodayDateString();
 
   // Metrics
@@ -47,6 +51,40 @@ export const DashboardPage: React.FC = () => {
   const pendingFollowUps = followUps.filter(
     (f) => f.status === 'Pending' || f.status === 'In Progress' || f.status === 'Upcoming'
   );
+
+  // Measure right column height to keep white outer card height fixed equal to right column's calendar card end
+  useEffect(() => {
+    const updateCardHeight = () => {
+      if (window.innerWidth >= 1024 && rightColRef.current && cardRef.current) {
+        const rightBottom = rightColRef.current.getBoundingClientRect().bottom;
+        const cardTop = cardRef.current.getBoundingClientRect().top;
+        const calculatedHeight = Math.round(rightBottom - cardTop);
+        if (calculatedHeight > 200) {
+          setFixedCardHeight(calculatedHeight);
+        }
+      } else {
+        setFixedCardHeight(undefined);
+      }
+    };
+
+    updateCardHeight();
+    const rafId = requestAnimationFrame(updateCardHeight);
+
+    const observer = new ResizeObserver(() => {
+      updateCardHeight();
+    });
+
+    if (rightColRef.current) {
+      observer.observe(rightColRef.current);
+    }
+
+    window.addEventListener('resize', updateCardHeight);
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+      window.removeEventListener('resize', updateCardHeight);
+    };
+  }, [pendingFollowUps.length, followUps.length, entries.length]);
 
   // Recent records (sorted by date and time descending)
   const recentEntries = [...entries]
@@ -163,11 +201,16 @@ export const DashboardPage: React.FC = () => {
       {/* Main Grid: Recent Entries vs Pending Follow-ups */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Recent Records */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="lg:col-span-8 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-forest-700" />
               <h2 className="text-base font-bold text-[#252B27]">Recent Records</h2>
+              {entries.length > 0 && (
+                <span className="text-xs text-[#737C74] font-medium">
+                  ({recentEntries.length} latest)
+                </span>
+              )}
             </div>
             <button
               type="button"
@@ -179,19 +222,30 @@ export const DashboardPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="space-y-3.5">
-            {recentEntries.map((entry) => (
-              <ActivityCard
-                key={entry.id}
-                entry={entry}
-                onEdit={handleEditNote}
-                onAddFollowUp={handleAddFollowUpForEntry}
-              />
-            ))}
-
-            {recentEntries.length === 0 && (
-              <div className="bg-white rounded-xl border border-dashed border-[#D5DAD3] p-8 text-center">
-                <BookOpen className="w-8 h-8 text-[#737C74] mx-auto mb-2" />
+          {/* 1 Container Card for Recent Records with internal scrolling */}
+          <div
+            ref={cardRef}
+            style={fixedCardHeight ? { height: `${fixedCardHeight}px` } : undefined}
+            className={`bg-white rounded-xl border border-[#E5E9E3] p-4 sm:p-5 shadow-2xs flex flex-col ${
+              !fixedCardHeight ? 'max-h-[500px]' : ''
+            }`}
+          >
+            {recentEntries.length > 0 ? (
+              <div className="space-y-3 overflow-y-auto pr-1.5 flex-1 min-h-0">
+                {recentEntries.map((entry) => (
+                  <ActivityCard
+                    key={entry.id}
+                    entry={entry}
+                    onEdit={handleEditNote}
+                    onAddFollowUp={handleAddFollowUpForEntry}
+                    compact={true}
+                    showDate={true}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 my-auto text-center">
+                <BookOpen className="w-8 h-8 text-[#737C74] mx-auto mb-2 opacity-60" />
                 <h4 className="text-sm font-semibold text-[#252B27]">No activity records yet</h4>
                 <p className="text-xs text-[#737C74] mt-1 max-w-sm mx-auto">
                   Start your personal work activity record by creating your first entry.
@@ -210,7 +264,7 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* Right Column: Pending Follow-ups & Calendar Shortcut */}
-        <div className="lg:col-span-4 space-y-5">
+        <div ref={rightColRef} className="lg:col-span-4 space-y-5">
           {/* Pending Follow-ups Card */}
           <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 shadow-2xs">
             <div className="flex items-center justify-between pb-3 border-b border-[#E5E9E3]">

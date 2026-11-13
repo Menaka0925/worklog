@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { CheckSquare, Plus } from 'lucide-react';
+import { CheckSquare, Plus, Calendar, Edit2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
-import { FollowUpCard } from './FollowUpCard';
+import { Badge, getStatusBadgeVariant } from '../common/Badge';
 import { FollowUpFormModal } from './FollowUpFormModal';
 import type { RecordEntry } from '../../types/record';
 import type { FollowUpItem } from '../../types/followup';
@@ -42,33 +42,98 @@ export const LinkedFollowUpModal: React.FC<LinkedFollowUpModalProps> = ({
         isOpen={isOpen}
         onClose={onClose}
         title="Linked Follow-up Details"
-        description={`Follow-up task linked to activity: "${record.title || record.description.slice(0, 45)}"`}
+        description={`Follow-up tasks linked to activity: "${record.title || record.description.slice(0, 45)}"`}
         maxWidth="lg"
       >
         <div className="space-y-4">
           {/* Source activity summary card */}
-          <div className="p-3 bg-[#F7F9F5] rounded-xl border border-[#E5E9E3] flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-[#252B27]">Activity:</span>
-              <span className="text-[#737C74]">
-                {formatDateDisplay(record.activity_date)} at {formatTimeDisplay(record.activity_time)}
-              </span>
+          <div className="p-3.5 bg-[#F7F9F5] rounded-xl border border-[#E5E9E3] space-y-1.5 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-[#252B27]">Source Activity:</span>
+                <span className="text-[#737C74]">
+                  {formatDateDisplay(record.activity_date)} at {formatTimeDisplay(record.activity_time)}
+                </span>
+              </div>
+              {record.category && (
+                <span className="px-2 py-0.5 rounded bg-[#E8F0E8] text-[#244735] font-semibold text-[11px] border border-[#C9DBCC]">
+                  {record.category}
+                </span>
+              )}
             </div>
-            {record.category && (
-              <span className="px-2 py-0.5 rounded bg-[#E8F0E8] text-[#244735] font-semibold text-[11px]">
-                {record.category}
-              </span>
+            {record.title && (
+              <h5 className="font-bold text-[#252B27]">{record.title}</h5>
             )}
           </div>
 
           {/* List of linked follow-ups */}
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-80 overflow-y-auto pr-1.5">
             {linkedItems.map((item) => (
-              <FollowUpCard
+              <div
                 key={item.id}
-                item={item}
-                onEdit={handleEdit}
-              />
+                className="p-4 bg-white rounded-xl border border-[#E5E9E3] space-y-2.5 shadow-2xs text-left"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={getStatusBadgeVariant(item.status)} size="sm">
+                      {item.status}
+                    </Badge>
+
+                    {item.priority && (
+                      <Badge
+                        variant={
+                          item.priority === 'high'
+                            ? 'danger'
+                            : item.priority === 'medium'
+                            ? 'warning'
+                            : 'default'
+                        }
+                        size="sm"
+                      >
+                        {item.priority === 'high'
+                          ? 'High Priority'
+                          : item.priority === 'medium'
+                          ? 'Medium Priority'
+                          : 'Low Priority'}
+                      </Badge>
+                    )}
+
+                    {item.due_date && (
+                      <span className="inline-flex items-center gap-1 text-xs text-[#737C74] font-medium">
+                        <Calendar className="w-3.5 h-3.5 text-[#315C46]" />
+                        <span>Due: {formatDateDisplay(item.due_date)}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(item)}
+                    className="p-1.5 rounded-md text-[#737C74] hover:text-[#252B27] hover:bg-[#F2F5F0] transition-colors cursor-pointer"
+                    title="Edit follow-up"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <h4 className="text-sm font-bold text-[#252B27] leading-snug">
+                  {item.title}
+                </h4>
+
+                {/* Description with dedicated scrollbar */}
+                {item.description ? (
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-[#737C74] mb-1">
+                      Description
+                    </label>
+                    <div className="bg-[#F7F8F5] rounded-lg p-3 border border-[#E5E9E3] text-xs text-[#252B27] whitespace-pre-wrap leading-relaxed max-h-32 sm:max-h-36 overflow-y-auto pr-2">
+                      {item.description}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#737C74] italic">No description provided.</p>
+                )}
+              </div>
             ))}
 
             {linkedItems.length === 0 && (
@@ -111,4 +176,3 @@ export const LinkedFollowUpModal: React.FC<LinkedFollowUpModalProps> = ({
     </>
   );
 };
-
