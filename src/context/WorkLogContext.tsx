@@ -84,7 +84,7 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [workProfile, setWorkProfile] = useState<WorkProfile>({});
 
   // Load from Supabase if configured and user is authenticated
-  const refreshData = async () => {
+  const refreshData = async (): Promise<void> => {
     if (!isSupabaseConfigured() || !supabase || !user) return;
 
     try {
@@ -121,11 +121,13 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .eq('user_id', user.id)
         .order('display_order', { ascending: true });
 
-      if (!cfErr && cfData) {
+      if (cfErr) {
+        console.error('Supabase fetch custom fields error:', cfErr);
+      } else if (cfData) {
         setCustomFields(cfData);
       }
 
-      // 4. Fetch custom categories if exists
+      // 4. Fetch custom categories
       const { data: catData, error: catErr } = await supabase
         .from('user_categories')
         .select('id, name')
@@ -142,17 +144,21 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // 5. Fetch user profile
       const { data: profData, error: profErr } = await supabase
         .from('user_profiles')
-        .select('industry, job_role, work_type')
+        .select('full_name, email')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (!profErr && profData) {
+      if (profErr) {
+        console.error('Supabase fetch profile error:', profErr);
+      } else if (profData) {
         setWorkProfile({
-          industry: profData.industry || undefined,
-          job_role: profData.job_role || undefined,
-          work_type: profData.work_type || undefined,
+          full_name: profData.full_name || undefined,
+          email: profData.email || undefined,
         });
+      } else {
+        setWorkProfile({});
       }
+
     } catch (err) {
       console.error('Supabase sync error:', err);
     }
@@ -464,7 +470,9 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // Work Profile
-  const updateWorkProfile = async (profileUpdate: Partial<WorkProfile>): Promise<void> => {
+  const updateWorkProfile = async (
+    profileUpdate: Partial<WorkProfile>
+  ): Promise<void> => {
     const updated = { ...workProfile, ...profileUpdate };
 
     if (!isSupabaseConfigured() || !supabase || !user) {
@@ -474,16 +482,15 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const { error } = await supabase.from('user_profiles').upsert(
       {
         id: user.id,
-        industry: updated.industry,
-        job_role: updated.job_role,
-        work_type: updated.work_type,
+        full_name: updated.full_name,
+        email: updated.email,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'id' }
     );
 
     if (error) {
-      console.error('Supabase update work profile error:', error);
+      console.error('Supabase update profile error:', error);
       throw error;
     }
 

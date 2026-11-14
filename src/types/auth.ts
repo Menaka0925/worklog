@@ -1,7 +1,6 @@
 export interface WorkProfile {
-  industry?: string;
-  job_role?: string;
-  work_type?: string;
+  full_name?: string;
+  email?: string;
 }
 
 export interface UserProfile {
