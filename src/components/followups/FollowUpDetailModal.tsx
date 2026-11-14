@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Edit2, ArrowRight, CheckSquare, Clock } from 'lucide-react';
+import { Calendar, Edit2, ArrowRight, Clock } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { Badge, getStatusBadgeVariant } from '../common/Badge';

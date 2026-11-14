@@ -47,7 +47,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({
         const el = descRef.current;
         const hasOverflow =
           el.scrollHeight > el.clientHeight + 1 ||
-          (entry.description && entry.description.split('\n').length > 2);
+          !!(entry.description && entry.description.split('\n').length > 2);
         setIsTruncated(hasOverflow);
       }
     };

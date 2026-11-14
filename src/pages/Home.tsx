@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -29,6 +29,21 @@ export const Home: React.FC = () => {
   const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
   const [registeredEmail, setRegisteredEmail] = useState('');
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reset') === 'success') {
+      setIsRegisterMode(false);
+      setAuthSuccessMessage('Password updated successfully! Please sign in with your new password.');
+      setAuthModalOpen(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (params.get('login') === 'true') {
+      setIsRegisterMode(false);
+      setAuthSuccessMessage(null);
+      setAuthModalOpen(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   const openLogin = () => {
     setIsRegisterMode(false);
     setAuthSuccessMessage(null);
@@ -57,12 +72,12 @@ export const Home: React.FC = () => {
           </a>
 
           <nav className="flex items-center gap-3">
-            <button
+            <Button
               onClick={openLogin}
-              className="text-sm font-medium text-[#515B53] hover:text-[#315C46] transition-colors px-2"
+              className="text-sm font-medium text-[#515B53] transition-colors px-2 "
             >
               Sign in
-            </button>
+            </Button>
 
             <Button
               onClick={openRegister}
@@ -466,7 +481,7 @@ export const Home: React.FC = () => {
               </p>
 
             </div>
-    
+
             <div className="grid md:grid-cols-2 gap-x-16">
 
               {/* Feature 1 */}
@@ -877,11 +892,10 @@ export const Home: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsRegisterMode(false)}
-                  className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${
-                    !isRegisterMode
-                      ? 'border-[#315C46] text-[#315C46]'
-                      : 'border-transparent text-[#899189] hover:text-[#252B27]'
-                  }`}
+                  className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${!isRegisterMode
+                    ? 'border-[#315C46] text-[#315C46]'
+                    : 'border-transparent text-[#899189] hover:text-[#252B27]'
+                    }`}
                 >
                   Sign in
                 </button>
@@ -889,11 +903,10 @@ export const Home: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsRegisterMode(true)}
-                  className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${
-                    isRegisterMode
-                      ? 'border-[#315C46] text-[#315C46]'
-                      : 'border-transparent text-[#899189] hover:text-[#252B27]'
-                  }`}
+                  className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${isRegisterMode
+                    ? 'border-[#315C46] text-[#315C46]'
+                    : 'border-transparent text-[#899189] hover:text-[#252B27]'
+                    }`}
                 >
                   Create account
                 </button>

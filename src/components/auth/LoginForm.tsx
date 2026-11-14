@@ -102,6 +102,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               </button>
             }
           />
+          <div className="flex justify-end mt-1.5">
+            <a
+              href="/forgot-password"
+              className="text-xs font-semibold text-[#315C46] hover:text-[#1C3629] hover:underline transition-colors"
+            >
+              Forgot Password?
+            </a>
+          </div>
         </div>
 
         <Button

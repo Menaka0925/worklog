@@ -7,7 +7,39 @@ import { getTodayDateString } from '../utils/dateUtils';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { useAuth } from './AuthContext';
 
-export const DEFAULT_CATEGORIES: string[] = [];
+export const BASE_DEFAULT_CATEGORIES: string[] = [
+  'General',
+  'notes',
+  'meeting/discussion',
+  'followup',
+];
+export const TAIL_DEFAULT_CATEGORY = 'other';
+export const DEFAULT_CATEGORIES: string[] = [
+  ...BASE_DEFAULT_CATEGORIES,
+  TAIL_DEFAULT_CATEGORY,
+];
+
+export const assembleCategories = (customCats: string[] = []): string[] => {
+  const isBaseDefault = (c: string) =>
+    BASE_DEFAULT_CATEGORIES.some((d) => d.toLowerCase() === c.toLowerCase());
+  const isTailDefault = (c: string) =>
+    c.toLowerCase() === TAIL_DEFAULT_CATEGORY.toLowerCase();
+
+  const customFiltered: string[] = [];
+  for (const cat of customCats) {
+    const trimmed = cat.trim();
+    if (
+      trimmed &&
+      !isBaseDefault(trimmed) &&
+      !isTailDefault(trimmed) &&
+      !customFiltered.some((c) => c.toLowerCase() === trimmed.toLowerCase())
+    ) {
+      customFiltered.push(trimmed);
+    }
+  }
+
+  return [...BASE_DEFAULT_CATEGORIES, ...customFiltered, TAIL_DEFAULT_CATEGORY];
+};
 
 interface WorkLogContextType {
   entries: RecordEntry[];
@@ -48,7 +80,7 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [entries, setEntries] = useState<RecordEntry[]>([]);
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [workProfile, setWorkProfile] = useState<WorkProfile>({});
 
   // Load from Supabase if configured and user is authenticated
@@ -96,12 +128,15 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // 4. Fetch custom categories if exists
       const { data: catData, error: catErr } = await supabase
         .from('user_categories')
-        .select('name')
+        .select('id, name')
         .eq('user_id', user.id)
-        .order('name', { ascending: true });
+        .order('id', { ascending: true });
 
-      if (!catErr && catData && catData.length > 0) {
-        setCategories(catData.map((c: { name: string }) => c.name));
+      if (!catErr && catData) {
+        const names = catData.map((c: { name: string }) => c.name);
+        setCategories(assembleCategories(names));
+      } else {
+        setCategories(DEFAULT_CATEGORIES);
       }
 
       // 5. Fetch user profile
@@ -131,7 +166,7 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setEntries([]);
       setFollowUps([]);
       setCustomFields([]);
-      setCategories([]);
+      setCategories(DEFAULT_CATEGORIES);
       setWorkProfile({});
     }
   }, [user]);
@@ -360,10 +395,22 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Configurable Categories
   const addCategory = async (name: string): Promise<void> => {
     const trimmed = name.trim();
-    if (!trimmed || categories.includes(trimmed)) return;
+    if (!trimmed) return;
+
+    // Check if category already exists (case-insensitive)
+    const exists = categories.some((c) => c.toLowerCase() === trimmed.toLowerCase());
+    if (exists) return;
 
     if (!isSupabaseConfigured() || !supabase || !user) {
-      throw new Error('Supabase is not configured or user is not logged in.');
+      setCategories((prev) => {
+        const customOnly = prev.filter(
+          (c) =>
+            !BASE_DEFAULT_CATEGORIES.some((d) => d.toLowerCase() === c.toLowerCase()) &&
+            c.toLowerCase() !== TAIL_DEFAULT_CATEGORY.toLowerCase()
+        );
+        return [...BASE_DEFAULT_CATEGORIES, ...customOnly, trimmed, TAIL_DEFAULT_CATEGORY];
+      });
+      return;
     }
 
     const { error } = await supabase.from('user_categories').insert({
@@ -377,26 +424,43 @@ export const WorkLogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       throw error;
     }
 
-    setCategories((prev) => [...prev, trimmed]);
+    setCategories((prev) => {
+      const customOnly = prev.filter(
+        (c) =>
+          !BASE_DEFAULT_CATEGORIES.some((d) => d.toLowerCase() === c.toLowerCase()) &&
+          c.toLowerCase() !== TAIL_DEFAULT_CATEGORY.toLowerCase()
+      );
+      return [...BASE_DEFAULT_CATEGORIES, ...customOnly, trimmed, TAIL_DEFAULT_CATEGORY];
+    });
   };
 
   const deleteCategory = async (name: string): Promise<void> => {
+    const trimmed = name.trim();
+    // Cannot delete base default categories or tail category
+    if (
+      BASE_DEFAULT_CATEGORIES.some((d) => d.toLowerCase() === trimmed.toLowerCase()) ||
+      trimmed.toLowerCase() === TAIL_DEFAULT_CATEGORY.toLowerCase()
+    ) {
+      return;
+    }
+
     if (!isSupabaseConfigured() || !supabase || !user) {
-      throw new Error('Supabase is not configured or user is not logged in.');
+      setCategories((prev) => prev.filter((c) => c.toLowerCase() !== trimmed.toLowerCase()));
+      return;
     }
 
     const { error } = await supabase
       .from('user_categories')
       .delete()
       .eq('user_id', user.id)
-      .eq('name', name);
+      .eq('name', trimmed);
 
     if (error) {
       console.error('Supabase delete category error:', error);
       throw error;
     }
 
-    setCategories((prev) => prev.filter((c) => c !== name));
+    setCategories((prev) => prev.filter((c) => c.toLowerCase() !== trimmed.toLowerCase()));
   };
 
   // Work Profile

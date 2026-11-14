@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import logoImg from '../../assets/logo.png';
 
 interface SidebarProps {
@@ -20,6 +21,8 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
   const { user, signOut } = useAuth();
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const navItems = [
     { label: 'Dashboard', to: '/', icon: LayoutDashboard, end: true },
@@ -99,7 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
           </div>
           <button
             type="button"
-            onClick={() => signOut()}
+            onClick={() => setShowSignOutConfirm(true)}
             title="Sign out"
             className="p-1.5 rounded-lg text-forest-300 hover:text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer"
           >
@@ -108,6 +111,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
         </div>
       </div>
     </div>
+
+    {/* Sign Out Confirmation Dialog */}
+    <ConfirmDialog
+      isOpen={showSignOutConfirm}
+      title="Sign Out"
+      message="Are you sure you want to sign out?"
+      confirmLabel="Sign Out"
+      cancelLabel="Cancel"
+      isDestructive={true}
+      isLoading={isSigningOut}
+      onConfirm={async () => {
+        setIsSigningOut(true);
+        try {
+          await signOut();
+          onCloseMobile?.();
+        } finally {
+          setIsSigningOut(false);
+          setShowSignOutConfirm(false);
+        }
+      }}
+      onCancel={() => setShowSignOutConfirm(false)}
+    />
   </aside>
 );
 };

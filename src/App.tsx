@@ -11,6 +11,7 @@ import { SearchPage } from './pages/SearchPage';
 import { FollowUpsPage } from './pages/FollowUpsPage';
 import { CustomFieldsPage } from './pages/CustomFieldsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { Loader2 } from 'lucide-react';
 
 const AppRoutes: React.FC = () => {
@@ -33,6 +34,7 @@ const AppRoutes: React.FC = () => {
     return (
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
@@ -41,6 +43,7 @@ const AppRoutes: React.FC = () => {
   return (
     <WorkLogProvider>
       <Routes>
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/home" element={<Home />} />

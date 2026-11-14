@@ -1,11 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   User,
-  Layers,
   Download,
   Check,
   LogOut,
-  Plus,
   Trash2,
   Calendar,
   Upload,
@@ -13,7 +11,13 @@ import {
   AlertTriangle,
   PauseCircle,
   ShieldAlert,
+  Lock,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Mail,
 } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useWorkLog } from '../context/WorkLogContext';
 import { Button } from '../components/common/Button';
@@ -69,17 +73,12 @@ export const SettingsPage: React.FC = () => {
     followUps,
     customFields,
     categories,
-    addCategory,
-    deleteCategory,
   } = useWorkLog();
 
   // Mini Avatar Popup state
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-
-  // New category local state
-  const [newCatInput, setNewCatInput] = useState('');
 
   // Pause Account Modal State
   const [isPauseModalOpen, setIsPauseModalOpen] = useState(false);
@@ -92,16 +91,35 @@ export const SettingsPage: React.FC = () => {
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
+  // Reset Password via Email Verification State
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isSendingResetEmail, setIsSendingResetEmail] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [resetEmailError, setResetEmailError] = useState<string | null>(null);
+  const [isResetVerified, setIsResetVerified] = useState(false);
+
+  // Set New Password Form State (shown only after email verification)
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  useEffect(() => {
+    // Check if user arrived via password reset email verification link
+    const params = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
+    if (params.get('verified_reset') === 'true' || hash.includes('type=recovery') || params.get('code')) {
+      setIsResetVerified(true);
+      // Clean query parameter from address bar
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   const selectedDays = customDaysInput ? Math.max(1, parseInt(customDaysInput, 10) || 1) : pauseDays;
   const resumeDate = new Date(Date.now() + selectedDays * 24 * 60 * 60 * 1000);
-
-  const handleAddCategory = async () => {
-    const trimmed = newCatInput.trim();
-    if (trimmed && !categories.includes(trimmed)) {
-      await addCategory(trimmed);
-      setNewCatInput('');
-    }
-  };
 
   const handleSelectPresetAvatar = async (dataUrl: string) => {
     await updateAvatar(dataUrl);
@@ -184,6 +202,69 @@ export const SettingsPage: React.FC = () => {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+  };
+
+  const handleSendVerificationEmail = async () => {
+    if (!supabase || !user?.email) {
+      setResetEmailError('Authentication service unavailable.');
+      return;
+    }
+    setIsSendingResetEmail(true);
+    setResetEmailError(null);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: `${window.location.origin}/settings?verified_reset=true`,
+      });
+      if (error) {
+        setResetEmailError(error.message || 'Failed to send verification link.');
+      } else {
+        setResetEmailSent(true);
+      }
+    } catch {
+      setResetEmailError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSendingResetEmail(false);
+    }
+  };
+
+  const handleUpdateVerifiedPassword = async () => {
+    setChangePasswordError(null);
+    setChangePasswordSuccess(false);
+
+    if (!newPassword) {
+      setChangePasswordError('Please enter a new password.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setChangePasswordError('New password must be at least 8 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangePasswordError('New passwords do not match. Please re-enter.');
+      return;
+    }
+    if (!supabase) {
+      setChangePasswordError('Authentication service unavailable.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (updateError) {
+        setChangePasswordError(updateError.message || 'Failed to update password. Please try again.');
+        return;
+      }
+
+      setNewPassword('');
+      setConfirmPassword('');
+      setChangePasswordSuccess(true);
+    } catch {
+      setChangePasswordError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   return (
@@ -272,11 +353,164 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Danger Zone Card (Below User Account) */}
+      {/* 2. Change Password Card — Shown ONLY when email verification is verified */}
+      {isResetVerified && (
+        <div className="bg-white rounded-xl border-2 border-emerald-500/80 p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E5E9E3]">
+            <div className="flex items-center gap-2 text-sm font-bold text-[#252B27]">
+              <KeyRound className="w-4 h-4 text-emerald-600" />
+              <span>Set New Password</span>
+            </div>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <Check className="w-3.5 h-3.5 text-emerald-600" /> Email Verified
+            </span>
+          </div>
+
+          <p className="text-xs text-[#737C74] leading-relaxed">
+            Your identity has been verified via your registered email. Enter your new password and confirm it below.
+          </p>
+
+          {changePasswordSuccess && (
+            <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Password updated successfully! Your new password is now active.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsResetVerified(false); setChangePasswordSuccess(false); }}
+                className="text-xs font-semibold text-emerald-800 hover:underline cursor-pointer ml-2"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {changePasswordError && (
+            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
+              <span className="font-semibold">Error: </span>{changePasswordError}
+            </div>
+          )}
+
+          {!changePasswordSuccess && (
+            <div className="grid gap-3 max-w-md">
+              {/* New Password */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#252B27]">New Password</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737C74]">
+                    <Lock className="w-4 h-4" />
+                  </span>
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    placeholder="Min. 8 characters"
+                    value={newPassword}
+                    onChange={(e) => { setNewPassword(e.target.value); setChangePasswordError(null); }}
+                    className="w-full pl-9 pr-10 py-2.5 text-sm border border-[#D5DDD6] rounded-lg bg-[#F7F9F5] text-[#252B27] placeholder-[#9BA59C] outline-none focus:border-forest-600 focus:ring-1 focus:ring-forest-600/30 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPw(!showNewPw)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#737C74] hover:text-[#252B27]"
+                  >
+                    {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm New Password */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#252B27]">Confirm New Password</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737C74]">
+                    <Lock className="w-4 h-4" />
+                  </span>
+                  <input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    placeholder="Repeat new password"
+                    value={confirmPassword}
+                    onChange={(e) => { setConfirmPassword(e.target.value); setChangePasswordError(null); }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleUpdateVerifiedPassword()}
+                    className="w-full pl-9 pr-10 py-2.5 text-sm border border-[#D5DDD6] rounded-lg bg-[#F7F9F5] text-[#252B27] placeholder-[#9BA59C] outline-none focus:border-forest-600 focus:ring-1 focus:ring-forest-600/30 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPw(!showConfirmPw)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#737C74] hover:text-[#252B27]"
+                  >
+                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {confirmPassword && newPassword && confirmPassword === newPassword && (
+                  <p className="flex items-center gap-1 text-xs text-emerald-700 mt-1">
+                    <Check className="w-3 h-3" /> Passwords match
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 mt-2">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={handleUpdateVerifiedPassword}
+                  disabled={isChangingPassword}
+                  isLoading={isChangingPassword}
+                  leftIcon={!isChangingPassword ? <KeyRound className="w-3.5 h-3.5" /> : undefined}
+                >
+                  {isChangingPassword ? 'Updating Password...' : 'Update Password'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsResetVerified(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Danger Zone Card (Below User Account) */}
       <div className="bg-white rounded-xl border border-rose-200/90 p-5 shadow-2xs space-y-5">
         <div className="flex items-center gap-2 text-sm font-bold text-rose-700 pb-2 border-b border-rose-100">
           <AlertTriangle className="w-4 h-4 text-rose-600" />
           <span>Danger Zone</span>
+        </div>
+
+        {/* Action: Reset Password (Above Pause Account) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rose-100/70">
+          <div className="max-w-xl">
+            <h4 className="text-sm font-bold text-[#252B27] flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-amber-700" />
+              <span>Reset Password</span>
+            </h4>
+            <p className="text-xs text-[#737C74] mt-1 leading-relaxed">
+              Reset your account password securely via email verification. A secure verification link will be sent to your registered email to verify your identity before setting a new password.
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setResetEmailSent(false);
+                setResetEmailError(null);
+                setIsResetModalOpen(true);
+              }}
+              className="border-amber-300 text-amber-900 hover:bg-amber-50"
+              leftIcon={<KeyRound className="w-4 h-4 text-amber-700" />}
+            >
+              Reset Password
+            </Button>
+          </div>
         </div>
 
         {/* Action A: Account Pause */}
@@ -334,69 +568,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Activity Categories Configuration Card */}
-      <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 shadow-2xs space-y-4">
-        <div className="flex items-center gap-2 text-sm font-bold text-[#252B27] pb-2 border-b border-[#E5E9E3]">
-          <Layers className="w-4 h-4 text-forest-600" />
-          <span>Activity Categories</span>
-        </div>
-
-        <p className="text-xs text-[#737C74] leading-relaxed">
-          Configure the activity categories available in your Add Record form. These categories are private to your workspace.
-        </p>
-
-        {/* Add new category */}
-        <div className="flex gap-2 max-w-md">
-          <Input
-            placeholder="Add new category"
-            value={newCatInput}
-            onChange={(e) => setNewCatInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleAddCategory();
-              }
-            }}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleAddCategory}
-            leftIcon={<Plus className="w-4 h-4" />}
-          >
-            Add
-          </Button>
-        </div>
-
-        {/* Category List */}
-        <div className="flex flex-wrap gap-2 pt-1">
-          {categories.length === 0 ? (
-            <p className="text-xs text-[#737C74] italic">
-              No custom categories added yet. Add your own activity categories above.
-            </p>
-          ) : (
-            categories.map((cat) => (
-              <span
-                key={cat}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-forest-100/70 border border-forest-200 text-xs font-semibold text-[#252B27]"
-              >
-                <span>{cat}</span>
-                <button
-                  type="button"
-                  onClick={() => deleteCategory(cat)}
-                  className="text-[#737C74] hover:text-rose-700 cursor-pointer"
-                  title="Remove category"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* 4. Data Backup & Export Card */}
+      {/* 3. Data Backup & Export Card */}
       <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 shadow-2xs space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-[#252B27] pb-2 border-b border-[#E5E9E3]">
           <Download className="w-4 h-4 text-forest-600" />
@@ -672,6 +844,86 @@ export const SettingsPage: React.FC = () => {
               {isDeletingAccount ? 'Deleting Everything...' : 'Permanently Delete Everything'}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Reset Password Email Verification Modal */}
+      <Modal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        title="Reset Account Password"
+        description="Verify your email address before setting a new password."
+        maxWidth="md"
+      >
+        <div className="space-y-4 text-left">
+          {resetEmailSent ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950 text-xs space-y-2">
+                <div className="font-bold flex items-center gap-1.5 text-emerald-800 text-sm">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>Verification Link Sent!</span>
+                </div>
+                <p className="leading-relaxed text-[#515B53]">
+                  We have sent a secure verification link to <strong className="text-[#252B27]">{user?.email}</strong>.
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-xs text-[#52675A] pt-1">
+                  <li>Check your email inbox (and Spam folder).</li>
+                  <li>Click the <strong>Reset Password</strong> link in the email.</li>
+                  <li>You will be redirected back here with the Change Password card unlocked.</li>
+                </ol>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsResetModalOpen(false)}
+                >
+                  Got it
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-xs text-[#515B53] leading-relaxed">
+                For your security, we need to verify your registered email before you can set a new password. Click below to receive a verification link:
+              </p>
+
+              <div className="p-3 bg-[#F7F9F5] rounded-lg border border-[#E5E9E3] flex items-center gap-2 text-xs">
+                <Mail className="w-4 h-4 text-forest-600 shrink-0" />
+                <span className="font-medium text-[#252B27]">{user?.email}</span>
+              </div>
+
+              {resetEmailError && (
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                  <span className="font-semibold">Error: </span>{resetEmailError}
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-[#E5E9E3] flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsResetModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSendVerificationEmail}
+                  disabled={isSendingResetEmail}
+                  isLoading={isSendingResetEmail}
+                  leftIcon={<Mail className="w-3.5 h-3.5" />}
+                >
+                  {isSendingResetEmail ? 'Sending Link...' : 'Send Verification Link'}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

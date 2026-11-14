@@ -3,7 +3,7 @@ import { Calendar, Edit2, Trash2, ArrowRight } from 'lucide-react';
 import type { FollowUpItem, FollowUpStatus } from '../../types/followup';
 import { Badge, getStatusBadgeVariant } from '../common/Badge';
 import { ConfirmDialog } from '../common/ConfirmDialog';
-import { formatDateDisplay } from '../../utils/dateUtils';
+import { formatDateDisplay, getTodayDateString } from '../../utils/dateUtils';
 import { useWorkLog } from '../../context/WorkLogContext';
 import { FollowUpDetailModal } from './FollowUpDetailModal';
 
@@ -45,7 +45,7 @@ export const FollowUpCard: React.FC<FollowUpCardProps> = ({
         const el = descRef.current;
         const hasOverflow =
           el.scrollHeight > el.clientHeight + 1 ||
-          (item.description && item.description.split('\n').length > 2);
+          !!(item.description && item.description.split('\n').length > 2);
         setIsTruncated(hasOverflow);
       }
     };
@@ -70,9 +70,32 @@ export const FollowUpCard: React.FC<FollowUpCardProps> = ({
     setShowConfirm(false);
   };
 
+  const todayStr = getTodayDateString();
+  const isFinished = item.status === 'Completed' || item.status === 'Cancelled / Rejected';
+
+  const getDaysDifference = (dueDateStr: string, todayDateStr: string): number => {
+    const [dY, dM, dD] = dueDateStr.split('-').map(Number);
+    const [tY, tM, tD] = todayDateStr.split('-').map(Number);
+    const dueUtc = Date.UTC(dY, dM - 1, dD);
+    const todayUtc = Date.UTC(tY, tM - 1, tD);
+    return Math.round((dueUtc - todayUtc) / (1000 * 60 * 60 * 24));
+  };
+
+  const diff = item.due_date ? getDaysDifference(item.due_date, todayStr) : null;
+  const isDuedOrToday = !isFinished && diff !== null && diff <= 0;
+  const isTwoDaysWarning = !isFinished && diff !== null && (diff === 2 || diff === 1);
+
   return (
     <>
-      <div className="bg-white rounded-xl border border-[#E5E9E3] p-4 shadow-2xs hover:border-[#D0D6CE] transition-all flex flex-col justify-between min-h-[145px]">
+      <div
+        className={`rounded-xl border p-4 shadow-2xs transition-all flex flex-col justify-between min-h-[145px] ${
+          isDuedOrToday
+            ? 'bg-rose-50/30 border-rose-300 hover:border-rose-400'
+            : isTwoDaysWarning
+            ? 'bg-amber-50/20 border-amber-300 hover:border-amber-400'
+            : 'bg-white border-[#E5E9E3] hover:border-[#D0D6CE]'
+        }`}
+      >
         <div>
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -97,6 +120,21 @@ export const FollowUpCard: React.FC<FollowUpCardProps> = ({
                     ? 'Medium Priority'
                     : 'Low Priority'}
                 </Badge>
+              )}
+
+              {/* Due Date Alert Badges */}
+              {isDuedOrToday && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-300 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse shrink-0" />
+                  <span>attention required*</span>
+                </span>
+              )}
+
+              {isTwoDaysWarning && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0" />
+                  <span>{diff === 1 ? '1day for due*' : '2days for due*'}</span>
+                </span>
               )}
 
               {item.due_date && (

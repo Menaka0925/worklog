@@ -54,11 +54,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const {
             data: { subscription },
-          } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          } = supabase!.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
               let avatarUrl = session.user.user_metadata?.avatar_url;
               if (!avatarUrl) {
-                const { data: profile } = await supabase
+                const { data: profile } = await supabase!
                   .from('user_profiles')
                   .select('avatar_url')
                   .eq('id', session.user.id)

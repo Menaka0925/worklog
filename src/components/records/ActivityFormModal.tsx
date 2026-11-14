@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Tag, Check, Plus, Settings2, Trash2 } from 'lucide-react';
+import { Calendar, Clock, Tag, Check, Plus, Settings2, Trash2, X } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { CustomFieldEditorModal } from '../custom-fields/CustomFieldEditorModal';
 import type { RecordEntry } from '../../types/record';
 import type { CustomFieldDefinition } from '../../types/customField';
@@ -22,14 +23,28 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
   entryToEdit,
   defaultDate,
 }) => {
-  const { addEntry, updateEntry, customFields, deleteCustomField, selectedDate, categories } = useWorkLog();
+  const {
+    addEntry,
+    updateEntry,
+    customFields,
+    deleteCustomField,
+    selectedDate,
+    categories,
+    addCategory,
+  } = useWorkLog();
 
   const [date, setDate] = useState<string>(getTodayDateString());
   const [time, setTime] = useState<string>(getCurrentTimeString());
   const [title, setTitle] = useState<string>('');
   const [description, setDescription] = useState<string>('');
-  const [category, setCategory] = useState<string>(categories[0] || '');
+  const [category, setCategory] = useState<string>('');
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
+
+  // Inline Category Addition state
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [categoryAddError, setCategoryAddError] = useState<string | null>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -37,6 +52,10 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
   // Custom Field modal inside Add Record form
   const [isCustomFieldModalOpen, setIsCustomFieldModalOpen] = useState(false);
   const [fieldToEdit, setFieldToEdit] = useState<CustomFieldDefinition | null>(null);
+
+  // Custom Field Deletion Confirmation Dialog State
+  const [customFieldToDelete, setCustomFieldToDelete] = useState<CustomFieldDefinition | null>(null);
+  const [isDeletingCustomField, setIsDeletingCustomField] = useState(false);
 
   const handleOpenCreateField = () => {
     setFieldToEdit(null);
@@ -48,14 +67,25 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
     setIsCustomFieldModalOpen(true);
   };
 
-  const handleDeleteCustomField = async (field: CustomFieldDefinition) => {
-    if (window.confirm(`Are you sure you want to delete the "${field.name}" custom field?`)) {
-      await deleteCustomField(field.id);
+  const handleDeleteCustomField = (field: CustomFieldDefinition) => {
+    setCustomFieldToDelete(field);
+  };
+
+  const handleConfirmDeleteCustomField = async () => {
+    if (!customFieldToDelete) return;
+    setIsDeletingCustomField(true);
+    try {
+      await deleteCustomField(customFieldToDelete.id);
       setCustomFieldValues((prev) => {
         const next = { ...prev };
-        delete next[field.id];
+        delete next[customFieldToDelete.id];
         return next;
       });
+      setCustomFieldToDelete(null);
+    } catch (err) {
+      console.error('Error deleting custom field:', err);
+    } finally {
+      setIsDeletingCustomField(false);
     }
   };
 
@@ -66,18 +96,46 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
       setTime(entryToEdit.activity_time);
       setTitle(entryToEdit.title || '');
       setDescription(entryToEdit.description);
-      setCategory(entryToEdit.category || categories[0] || '');
+      setCategory(entryToEdit.category || '');
       setCustomFieldValues(entryToEdit.custom_field_values || {});
     } else {
       setDate(defaultDate || selectedDate || getTodayDateString());
       setTime(getCurrentTimeString());
       setTitle('');
       setDescription('');
-      setCategory(categories[0] || '');
+      setCategory('');
       setCustomFieldValues({});
     }
+    setIsAddingCategory(false);
+    setNewCategoryInput('');
+    setCategoryAddError(null);
+    setCustomFieldToDelete(null);
+    setIsDeletingCustomField(false);
     setErrors({});
-  }, [entryToEdit, isOpen, defaultDate, selectedDate, categories]);
+  }, [entryToEdit, isOpen, defaultDate, selectedDate]);
+
+  const handleCreateNewCategory = async () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) return;
+
+    if (categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      setCategoryAddError('This category already exists');
+      return;
+    }
+
+    setIsSavingCategory(true);
+    setCategoryAddError(null);
+    try {
+      await addCategory(trimmed);
+      setCategory(trimmed);
+      setIsAddingCategory(false);
+      setNewCategoryInput('');
+    } catch (err: any) {
+      setCategoryAddError(err?.message || 'Failed to add category');
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
 
   const handleCustomFieldChange = (fieldId: string, val: any) => {
     setCustomFieldValues((prev) => ({
@@ -195,9 +253,76 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[#252B27] mb-1.5">
-                Category
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[#252B27]">
+                  Category
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingCategory((prev) => !prev);
+                    setNewCategoryInput('');
+                    setCategoryAddError(null);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-forest-700 hover:text-forest-900 transition-colors cursor-pointer"
+                  title="Add new category"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add</span>
+                </button>
+              </div>
+
+              {isAddingCategory && (
+                <div className="mb-2 p-2 rounded-lg bg-[#F7F9F5] border border-forest-200 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Category name..."
+                      value={newCategoryInput}
+                      onChange={(e) => {
+                        setNewCategoryInput(e.target.value);
+                        if (categoryAddError) setCategoryAddError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCreateNewCategory();
+                        } else if (e.key === 'Escape') {
+                          setIsAddingCategory(false);
+                          setNewCategoryInput('');
+                          setCategoryAddError(null);
+                        }
+                      }}
+                      className="flex-1 min-w-0 rounded-md border border-[#E5E9E3] bg-white px-2 py-1 text-xs text-[#252B27] placeholder:text-[#737C74] focus:outline-none focus:border-forest-600 focus:ring-1 focus:ring-forest-600"
+                    />
+                    <button
+                      type="button"
+                      disabled={isSavingCategory || !newCategoryInput.trim()}
+                      onClick={handleCreateNewCategory}
+                      className="px-2.5 py-1 rounded-md bg-forest-700 text-white text-xs font-medium hover:bg-forest-800 disabled:opacity-50 transition-colors cursor-pointer shrink-0"
+                    >
+                      {isSavingCategory ? '...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingCategory(false);
+                        setNewCategoryInput('');
+                        setCategoryAddError(null);
+                      }}
+                      className="p-1 rounded-md text-[#737C74] hover:text-[#252B27] hover:bg-[#E5E9E3]/50 transition-colors cursor-pointer shrink-0"
+                      title="Cancel"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {categoryAddError && (
+                    <p className="text-[11px] text-rose-600 font-medium">{categoryAddError}</p>
+                  )}
+                </div>
+              )}
+
               <div className="relative">
                 <select
                   value={category}
@@ -207,6 +332,9 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
                   <option value="">
                     {categories.length === 0 ? 'No categories (optional)' : 'Select category (optional)...'}
                   </option>
+                  {category && !categories.includes(category) && (
+                    <option value={category}>{category}</option>
+                  )}
                   {categories.map((cat) => (
                     <option key={cat} value={cat}>
                       {cat}
@@ -502,6 +630,19 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
         isOpen={isCustomFieldModalOpen}
         onClose={() => setIsCustomFieldModalOpen(false)}
         fieldToEdit={fieldToEdit}
+      />
+
+      {/* Custom Field Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!customFieldToDelete}
+        title="Delete Custom Field?"
+        message={`Are you sure you want to delete the "${customFieldToDelete?.name}" custom field? Historical entries that recorded values for this field will keep their existing data safe.`}
+        confirmLabel="Delete Field"
+        cancelLabel="Cancel"
+        isDestructive={true}
+        isLoading={isDeletingCustomField}
+        onConfirm={handleConfirmDeleteCustomField}
+        onCancel={() => setCustomFieldToDelete(null)}
       />
     </>
   );

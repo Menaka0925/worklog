@@ -14,7 +14,7 @@ import { FollowUpCard } from '../components/followups/FollowUpCard';
 import { FollowUpFormModal } from '../components/followups/FollowUpFormModal';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
-import { formatDateDisplay } from '../utils/dateUtils';
+import { formatDateDisplay, getTodayDateString } from '../utils/dateUtils';
 import type { FollowUpItem, FollowUpStatus } from '../types/followup';
 import type { RecordEntry } from '../types/record';
 import { RecordDetailModal } from '../components/calendar/RecordDetailModal';
@@ -84,9 +84,11 @@ export const FollowUpsPage: React.FC = () => {
     };
   }, []);
 
-  // Filter follow-ups by Status and Due Date Range
+  const todayStr = getTodayDateString();
+
+  // Filter and sort follow-ups by Status and Due Date Range, ordered from today's date
   const filteredFollowUps = useMemo(() => {
-    return followUps.filter((item) => {
+    const list = followUps.filter((item) => {
       // 1. Status Filter
       if (activeTab !== 'All' && item.status !== activeTab) {
         return false;
@@ -105,6 +107,32 @@ export const FollowUpsPage: React.FC = () => {
       }
 
       return true;
+    });
+
+    return list.sort((a, b) => {
+      // Prioritize active (uncompleted) items before completed/cancelled when viewing 'All'
+      const isACompleted = a.status === 'Completed' || a.status === 'Cancelled / Rejected';
+      const isBCompleted = b.status === 'Completed' || b.status === 'Cancelled / Rejected';
+      if (!isACompleted && isBCompleted) return -1;
+      if (isACompleted && !isBCompleted) return 1;
+
+      // 1. Items with due dates come before undated items
+      if (a.due_date && !b.due_date) return -1;
+      if (!a.due_date && b.due_date) return 1;
+
+      // 2. Both have due dates: earliest/overdue/today first
+      if (a.due_date && b.due_date) {
+        const cmp = a.due_date.localeCompare(b.due_date);
+        if (cmp !== 0) return cmp;
+      }
+
+      // 3. Priority fallback: high > medium > low
+      const priorityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
+      const weightA = priorityOrder[a.priority || 'medium'] || 2;
+      const weightB = priorityOrder[b.priority || 'medium'] || 2;
+      if (weightA !== weightB) return weightB - weightA;
+
+      return (b.created_at || '').localeCompare(a.created_at || '');
     });
   }, [followUps, activeTab, appliedStartDate, appliedEndDate]);
 

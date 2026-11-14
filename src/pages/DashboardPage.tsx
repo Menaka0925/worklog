@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Calendar as CalendarIcon,
   BookOpen,
   CheckSquare,
   Clock,
@@ -16,8 +15,9 @@ import { Badge, getStatusBadgeVariant } from '../components/common/Badge';
 import { ActivityCard } from '../components/records/ActivityCard';
 import { ActivityFormModal } from '../components/records/ActivityFormModal';
 import { FollowUpFormModal } from '../components/followups/FollowUpFormModal';
-import { getTodayDateString } from '../utils/dateUtils';
+import { getTodayDateString, formatDateDisplay } from '../utils/dateUtils';
 import type { RecordEntry } from '../types/record';
+import type { FollowUpItem } from '../types/followup';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -28,10 +28,7 @@ export const DashboardPage: React.FC = () => {
   const [entryToEdit, setEntryToEdit] = useState<RecordEntry | null>(null);
   const [isAddFollowUpOpen, setIsAddFollowUpOpen] = useState(false);
   const [selectedEntryForFollowUp, setSelectedEntryForFollowUp] = useState<RecordEntry | null>(null);
-
-  const rightColRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [fixedCardHeight, setFixedCardHeight] = useState<number | undefined>(undefined);
+  const [followUpToEdit, setFollowUpToEdit] = useState<FollowUpItem | null>(null);
 
   const todayStr = getTodayDateString();
 
@@ -47,44 +44,44 @@ export const DashboardPage: React.FC = () => {
       .map((e) => e.activity_date)
   ).size;
 
-  // Pending & active follow-ups
-  const pendingFollowUps = followUps.filter(
-    (f) => f.status === 'Pending' || f.status === 'In Progress' || f.status === 'Upcoming'
-  );
+  // Helper to calculate difference in calendar days (UTC to avoid TZ / DST discrepancies)
+  const getDaysDifference = (dueDateStr: string, todayDateStr: string): number => {
+    const [dY, dM, dD] = dueDateStr.split('-').map(Number);
+    const [tY, tM, tD] = todayDateStr.split('-').map(Number);
+    const dueUtc = Date.UTC(dY, dM - 1, dD);
+    const todayUtc = Date.UTC(tY, tM - 1, tD);
+    return Math.round((dueUtc - todayUtc) / (1000 * 60 * 60 * 24));
+  };
 
-  // Measure right column height to keep white outer card height fixed equal to right column's calendar card end
-  useEffect(() => {
-    const updateCardHeight = () => {
-      if (window.innerWidth >= 1024 && rightColRef.current && cardRef.current) {
-        const rightBottom = rightColRef.current.getBoundingClientRect().bottom;
-        const cardTop = cardRef.current.getBoundingClientRect().top;
-        const calculatedHeight = Math.round(rightBottom - cardTop);
-        if (calculatedHeight > 200) {
-          setFixedCardHeight(calculatedHeight);
-        }
-      } else {
-        setFixedCardHeight(undefined);
+  // Active / pending follow-ups (excluding Completed / Cancelled)
+  const activeFollowUps = useMemo(() => {
+    return followUps.filter(
+      (f) => f.status !== 'Completed' && f.status !== 'Cancelled / Rejected'
+    );
+  }, [followUps]);
+
+  // Sorted based on due date orders from today's date
+  const sortedFollowUps = useMemo(() => {
+    return [...activeFollowUps].sort((a, b) => {
+      // 1. Items with due dates come before undated items
+      if (a.due_date && !b.due_date) return -1;
+      if (!a.due_date && b.due_date) return 1;
+
+      // 2. Both have due dates: earliest/overdue/today first
+      if (a.due_date && b.due_date) {
+        const cmp = a.due_date.localeCompare(b.due_date);
+        if (cmp !== 0) return cmp;
       }
-    };
 
-    updateCardHeight();
-    const rafId = requestAnimationFrame(updateCardHeight);
+      // 3. Priority fallback: high > medium > low
+      const priorityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
+      const weightA = priorityOrder[a.priority || 'medium'] || 2;
+      const weightB = priorityOrder[b.priority || 'medium'] || 2;
+      if (weightA !== weightB) return weightB - weightA;
 
-    const observer = new ResizeObserver(() => {
-      updateCardHeight();
+      return (b.created_at || '').localeCompare(a.created_at || '');
     });
-
-    if (rightColRef.current) {
-      observer.observe(rightColRef.current);
-    }
-
-    window.addEventListener('resize', updateCardHeight);
-    return () => {
-      cancelAnimationFrame(rafId);
-      observer.disconnect();
-      window.removeEventListener('resize', updateCardHeight);
-    };
-  }, [pendingFollowUps.length, followUps.length, entries.length]);
+  }, [activeFollowUps]);
 
   // Recent records (sorted by date and time descending)
   const recentEntries = [...entries]
@@ -93,7 +90,7 @@ export const DashboardPage: React.FC = () => {
       const dateTimeB = `${b.activity_date} ${b.activity_time}`;
       return dateTimeB.localeCompare(dateTimeA);
     })
-    .slice(0, 5);
+    .slice(0, 10);
 
   const handleEditNote = (entry: RecordEntry) => {
     setEntryToEdit(entry);
@@ -102,6 +99,13 @@ export const DashboardPage: React.FC = () => {
 
   const handleAddFollowUpForEntry = (entry: RecordEntry) => {
     setSelectedEntryForFollowUp(entry);
+    setFollowUpToEdit(null);
+    setIsAddFollowUpOpen(true);
+  };
+
+  const handleEditFollowUp = (item: FollowUpItem) => {
+    setFollowUpToEdit(item);
+    setSelectedEntryForFollowUp(null);
     setIsAddFollowUpOpen(true);
   };
 
@@ -177,7 +181,7 @@ export const DashboardPage: React.FC = () => {
         <div className="bg-white rounded-xl border border-[#E5E9E3] p-4 shadow-2xs flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-[#737C74]">Pending Follow-ups</p>
-            <h3 className="text-2xl font-bold text-[#252B27] mt-1">{pendingFollowUps.length}</h3>
+            <h3 className="text-2xl font-bold text-[#252B27] mt-1">{activeFollowUps.length}</h3>
             <p className="text-[11px] text-warm-700 font-medium mt-0.5">require your attention</p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-warm-50 text-warm-700 flex items-center justify-center border border-warm-200">
@@ -199,9 +203,9 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Main Grid: Recent Entries vs Pending Follow-ups */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Recent Records */}
-        <div className="lg:col-span-8 space-y-3">
+        <div className="lg:col-span-7 xl:col-span-8 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-forest-700" />
@@ -222,14 +226,8 @@ export const DashboardPage: React.FC = () => {
             </button>
           </div>
 
-          {/* 1 Container Card for Recent Records with internal scrolling */}
-          <div
-            ref={cardRef}
-            style={fixedCardHeight ? { height: `${fixedCardHeight}px` } : undefined}
-            className={`bg-white rounded-xl border border-[#E5E9E3] p-4 sm:p-5 shadow-2xs flex flex-col ${
-              !fixedCardHeight ? 'max-h-[500px]' : ''
-            }`}
-          >
+          {/* 1 Container Card for Recent Records with internal scrolling and fixed height */}
+          <div className="bg-white rounded-xl border border-[#E5E9E3] p-4 sm:p-5 shadow-2xs flex flex-col h-[520px]">
             {recentEntries.length > 0 ? (
               <div className="space-y-3 overflow-y-auto pr-1.5 flex-1 min-h-0">
                 {recentEntries.map((entry) => (
@@ -263,57 +261,130 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Pending Follow-ups & Calendar Shortcut */}
-        <div ref={rightColRef} className="lg:col-span-4 space-y-5">
-          {/* Pending Follow-ups Card */}
-          <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 shadow-2xs">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E9E3]">
-              <div className="flex items-center gap-2">
-                <CheckSquare className="w-4 h-4 text-warm-700" />
-                <h3 className="text-sm font-bold text-[#252B27]">Pending Follow-ups</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/followups')}
-                className="text-xs font-semibold text-forest-700 hover:text-forest-900 cursor-pointer"
-              >
-                All ({followUps.length})
-              </button>
-            </div>
-
-            <div className="mt-3 space-y-3">
-              {pendingFollowUps.slice(0, 4).map((item) => (
-                <div
-                  key={item.id}
-                  className="p-3 rounded-lg bg-[#F7F8F5] border border-[#E5E9E3] hover:border-[#D0D6CE] transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <Badge variant={getStatusBadgeVariant(item.status)} size="sm">
-                      {item.status}
-                    </Badge>
-                    {item.due_date && (
-                      <span className="text-[10px] text-[#737C74] font-medium">
-                        Due {item.due_date}
-                      </span>
-                    )}
-                  </div>
-                  <h5 className="text-xs font-semibold text-[#252B27] mt-1.5 leading-snug">
-                    {item.title}
-                  </h5>
-                </div>
-              ))}
-
-              {pendingFollowUps.length === 0 && (
-                <p className="text-xs text-[#737C74] py-3 text-center italic">
-                  No active follow-ups right now.
-                </p>
+        {/* Right Column: Follow-ups */}
+        <div className="lg:col-span-5 xl:col-span-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-4 h-4 text-warm-700" />
+              <h2 className="text-base font-bold text-[#252B27]">Follow-ups</h2>
+              {activeFollowUps.length > 0 && (
+                <span className="text-xs text-[#737C74] font-medium">
+                  ({activeFollowUps.length} active)
+                </span>
               )}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/followups')}
+              className="text-xs font-semibold text-forest-700 hover:text-forest-900 flex items-center gap-1 cursor-pointer"
+            >
+              <span>View All</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
+          {/* 1 Container Card for Follow-ups with identical fixed height and inline scrollbar */}
+          <div className="bg-white rounded-xl border border-[#E5E9E3] p-4 sm:p-5 shadow-2xs flex flex-col h-[520px]">
+            {sortedFollowUps.length > 0 ? (
+              <div className="space-y-2.5 overflow-y-auto pr-1.5 flex-1 min-h-0">
+                {sortedFollowUps.map((item) => {
+                  const diff = item.due_date ? getDaysDifference(item.due_date, todayStr) : null;
+                  const isDuedOrToday = diff !== null && diff <= 0;
+                  const isTwoDaysWarning = diff !== null && (diff === 2 || diff === 1);
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleEditFollowUp(item)}
+                      className={`p-3 rounded-lg border transition-all cursor-pointer group ${isDuedOrToday
+                          ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300 hover:bg-rose-50/70 shadow-2xs'
+                          : isTwoDaysWarning
+                            ? 'bg-amber-50/40 border-amber-200 hover:border-amber-300 hover:bg-amber-50/70 shadow-2xs'
+                            : 'bg-[#F7F8F5] border-[#E5E9E3] hover:border-[#C9D1C6] hover:bg-[#F2F5F0]'
+                        }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant={getStatusBadgeVariant(item.status)} size="sm">
+                            {item.status}
+                          </Badge>
+                          {item.priority === 'high' && (
+                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                              High
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Due Warning or Date Indicator */}
+                        {isDuedOrToday && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 shadow-2xs shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse shrink-0" />
+                            <span>attention required*</span>
+                          </span>
+                        )}
+
+                        {isTwoDaysWarning && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0" />
+                            <span>{diff === 1 ? '1day for due*' : '2days for due*'}</span>
+                          </span>
+                        )}
+
+                        {diff !== null && !isDuedOrToday && !isTwoDaysWarning && (
+                          <span className="text-[10px] text-[#737C74] font-medium shrink-0">
+                            Due {formatDateDisplay(item.due_date)}
+                          </span>
+                        )}
+
+                        {diff === null && (
+                          <span className="text-[10px] text-[#737C74]/70 italic shrink-0">
+                            No due date
+                          </span>
+                        )}
+                      </div>
+
+                      <h5 className="text-xs font-semibold text-[#252B27] mt-1.5 leading-snug group-hover:text-forest-800 transition-colors">
+                        {item.title}
+                      </h5>
+
+                      {item.description && (
+                        <p className="text-[11px] text-[#737C74] mt-1 line-clamp-1 leading-relaxed">
+                          {item.description}
+                        </p>
+                      )}
+
+                      {item.due_date && (isDuedOrToday || isTwoDaysWarning) && (
+                        <div className="mt-1.5 pt-1.5 border-t border-black/5 flex items-center justify-between text-[10px] text-[#737C74]">
+                          <span>
+                            Due: <span className="font-semibold text-[#252B27]">{formatDateDisplay(item.due_date)}</span>
+                          </span>
+                          <span className="text-forest-700 font-medium group-hover:underline">
+                            Click to edit →
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-8 my-auto text-center">
+                <CheckSquare className="w-8 h-8 text-[#737C74] mx-auto mb-2 opacity-60" />
+                <h4 className="text-sm font-semibold text-[#252B27]">No active follow-ups</h4>
+                <p className="text-xs text-[#737C74] mt-1 max-w-xs mx-auto">
+                  You are all caught up! Add a new follow-up task whenever needed.
+                </p>
+              </div>
+            )}
+
+            {/* Bottom Add Follow-up button */}
+            <div className="pt-3 border-t border-[#E5E9E3] mt-2 shrink-0">
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full justify-center text-xs mt-2"
+                className="w-full justify-center text-xs"
                 onClick={() => {
+                  setFollowUpToEdit(null);
                   setSelectedEntryForFollowUp(null);
                   setIsAddFollowUpOpen(true);
                 }}
@@ -322,35 +393,6 @@ export const DashboardPage: React.FC = () => {
                 Add Follow-up
               </Button>
             </div>
-          </div>
-
-          {/* Quick Calendar Jump Widget */}
-          <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 shadow-2xs">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E9E3]">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-forest-700" />
-                <h3 className="text-sm font-bold text-[#252B27]">Calendar</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/calendar')}
-                className="text-xs font-semibold text-[#737C74] hover:text-[#252B27] cursor-pointer"
-              >
-                Full View
-              </button>
-            </div>
-            <p className="text-xs text-[#737C74] mt-3 leading-relaxed">
-              Explore your past work activity by month or year and review exact chronological timestamps.
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full mt-3 justify-center"
-              onClick={() => navigate('/calendar')}
-              rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
-            >
-              Open Calendar
-            </Button>
           </div>
         </div>
       </div>
@@ -371,7 +413,9 @@ export const DashboardPage: React.FC = () => {
         onClose={() => {
           setIsAddFollowUpOpen(false);
           setSelectedEntryForFollowUp(null);
+          setFollowUpToEdit(null);
         }}
+        followUpToEdit={followUpToEdit}
         linkedEntry={selectedEntryForFollowUp}
       />
     </div>

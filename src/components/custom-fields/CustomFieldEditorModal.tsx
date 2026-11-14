@@ -3,6 +3,7 @@ import { Check, Plus, Trash2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import type { CustomFieldDefinition, CustomFieldType } from '../../types/customField';
 import { useWorkLog } from '../../context/WorkLogContext';
 
@@ -38,6 +39,10 @@ export const CustomFieldEditorModal: React.FC<CustomFieldEditorModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Custom Field Deletion Confirmation Dialog State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const requiresOptions = fieldType === 'dropdown' || fieldType === 'checkbox' || fieldType === 'multi_select';
 
   useEffect(() => {
@@ -56,6 +61,8 @@ export const CustomFieldEditorModal: React.FC<CustomFieldEditorModalProps> = ({
     }
     setNewOptionInput('');
     setError(null);
+    setShowDeleteConfirm(false);
+    setIsDeleting(false);
   }, [fieldToEdit, isOpen]);
 
   const handleAddOption = () => {
@@ -107,26 +114,31 @@ export const CustomFieldEditorModal: React.FC<CustomFieldEditorModalProps> = ({
     }
   };
 
-  const handleDeleteField = async () => {
+  const handleDeleteField = () => {
     if (!fieldToEdit) return;
-    if (window.confirm(`Are you sure you want to delete the "${fieldToEdit.name}" custom field?`)) {
-      setIsSubmitting(true);
-      try {
-        await deleteCustomField(fieldToEdit.id);
-        onClose();
-      } catch (err) {
-        console.error('Error deleting custom field:', err);
-      } finally {
-        setIsSubmitting(false);
-      }
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!fieldToEdit) return;
+    setIsDeleting(true);
+    try {
+      await deleteCustomField(fieldToEdit.id);
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch (err) {
+      console.error('Error deleting custom field:', err);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={fieldToEdit ? `Edit Custom Field: ${fieldToEdit.name}` : 'Add New Custom Field'}
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={fieldToEdit ? `Edit Custom Field: ${fieldToEdit.name}` : 'Add New Custom Field'}
       description="Create or edit your own custom input fields. You can include extra options at any time."
       maxWidth="lg"
     >
@@ -290,5 +302,18 @@ export const CustomFieldEditorModal: React.FC<CustomFieldEditorModalProps> = ({
         </div>
       </form>
     </Modal>
+
+    <ConfirmDialog
+      isOpen={showDeleteConfirm}
+      title="Delete Custom Field?"
+      message={`Are you sure you want to delete the "${fieldToEdit?.name}" custom field? Historical entries that recorded values for this field will keep their existing data safe.`}
+      confirmLabel="Delete Field"
+      cancelLabel="Cancel"
+      isDestructive={true}
+      isLoading={isDeleting}
+      onConfirm={handleConfirmDelete}
+      onCancel={() => setShowDeleteConfirm(false)}
+    />
+  </>
   );
 };
