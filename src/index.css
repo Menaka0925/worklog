@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --color-page: #F7F8F5;
+  --color-surface: #FFFFFF;
+  --color-border-subtle: #E5E9E3;
+  --color-text-main: #252B27;
+  --color-text-muted: #737C74;
+
+  --color-forest-50: #F4F7F4;
+  --color-forest-100: #EAF1EB;
+  --color-forest-200: #C9DBCC;
+  --color-forest-300: #9CBDA2;
+  --color-forest-400: #659372;
+  --color-forest-500: #427457;
+  --color-forest-600: #315C46;
+  --color-forest-700: #244735;
+  --color-forest-800: #1C3629;
+  --color-forest-900: #15291F;
+
+  --color-warm-50: #FAF6F0;
+  --color-warm-100: #F4EBDC;
+  --color-warm-200: #E7D5B9;
+  --color-warm-600: #B58A52;
+  --color-warm-700: #8A5F23;
+}
+
+@layer base {
+  body {
+    background-color: #F7F8F5;
+    color: #252B27;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  /* Custom scrollbar matching Forest Editorial paper feel */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #D5DAD3;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #B6BFB3;
+  }
+}
+
