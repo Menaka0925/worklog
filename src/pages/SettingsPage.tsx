@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   PauseCircle,
   ShieldAlert,
+  ShieldCheck,
+  FileText,
   Lock,
   Eye,
   EyeOff,
@@ -24,6 +26,8 @@ import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Modal } from '../components/common/Modal';
 import { formatDateDisplay } from '../utils/dateUtils';
+import { exportWorkRecordsPDF, exportAccountDetailsPDF } from '../utils/pdfExport';
+import type { AccountActivityRecord } from '../types/auth';
 
 const SUGGESTED_AVATARS = [
   {
@@ -181,27 +185,116 @@ export const SettingsPage: React.FC = () => {
     await deleteAccountAndAllData();
   };
 
-  const handleExportJson = () => {
-    const backupData = {
-      exported_at: new Date().toISOString(),
-      user: user?.email,
-      categories,
-      entries,
-      followUps,
-      customFields,
-    };
+  // PDF Export States
+  const [isExportingRecords, setIsExportingRecords] = useState(false);
+  const [isExportingAccount, setIsExportingAccount] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
 
-    const dataStr =
-      'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute(
-      'download',
-      `worktrace-backup-${new Date().toISOString().slice(0, 10)}.json`
-    );
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+  const handleExportWorkRecordsPdf = async () => {
+    if (!user || isExportingRecords || isExportingAccount) return;
+    setIsExportingRecords(true);
+    setExportError(null);
+    setExportSuccess(null);
+    try {
+      await exportWorkRecordsPDF({
+        user: {
+          full_name: user.full_name,
+          email: user.email,
+        },
+        records: entries,
+        followUps,
+        categories,
+        customFields,
+      });
+      setExportSuccess('Work Records PDF generated and downloaded successfully.');
+    } catch (err: any) {
+      console.error('Failed to export work records PDF:', err);
+      setExportError(err?.message || 'Failed to generate Work Records PDF report.');
+    } finally {
+      setIsExportingRecords(false);
+    }
+  };
+
+  const handleExportAccountDetailsPdf = async () => {
+    if (!user || isExportingRecords || isExportingAccount) return;
+    setIsExportingAccount(true);
+    setExportError(null);
+    setExportSuccess(null);
+    try {
+      let activityHistory: AccountActivityRecord[] = [];
+
+      if (supabase && user.id) {
+        // 1. Fetch from account_activity_history table
+        const { data: actData, error: actErr } = await supabase
+          .from('account_activity_history')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('event_timestamp', { ascending: false });
+
+        if (!actErr && actData) {
+          activityHistory = actData as AccountActivityRecord[];
+        }
+
+        // 2. Also check password_reset_log as fallback to guarantee complete historical coverage
+        const { data: prlData } = await supabase
+          .from('password_reset_log')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('reset_at', { ascending: false });
+
+        if (prlData && prlData.length > 0) {
+          prlData.forEach((prl: any) => {
+            const alreadyExists = activityHistory.some(
+              (a) =>
+                a.event_type === 'password_reset' &&
+                Math.abs(new Date(a.event_timestamp).getTime() - new Date(prl.reset_at).getTime()) < 5000
+            );
+            if (!alreadyExists) {
+              activityHistory.push({
+                id: prl.id,
+                user_id: prl.user_id,
+                event_type: 'password_reset',
+                event_timestamp: prl.reset_at,
+                metadata: { method: 'forgot_password_recovery', backfilled: true },
+                created_at: prl.reset_at,
+              });
+            }
+          });
+        }
+      }
+
+      // Determine current account status
+      let currentStatus: 'Active' | 'Currently Paused' | 'Scheduled to Resume' = 'Active';
+      let pausedUntil: string | null = null;
+
+      const pausedUntilMeta = (user as any)?.account_paused_until;
+      if (pausedUntilMeta) {
+        pausedUntil = pausedUntilMeta;
+        const untilTime = new Date(pausedUntilMeta).getTime();
+        if (untilTime > Date.now()) {
+          currentStatus = 'Currently Paused';
+        }
+      }
+
+      await exportAccountDetailsPDF({
+        user: {
+          id: user.id,
+          full_name: user.full_name,
+          email: user.email,
+          created_at: user.created_at,
+        },
+        activityHistory,
+        currentStatus,
+        pausedUntil,
+      });
+      setExportSuccess('Account Details PDF generated and downloaded successfully.');
+    } catch (err: any) {
+      console.error('Failed to export account details PDF:', err);
+      setExportError(err?.message || 'Failed to generate Account Details PDF report.');
+    } finally {
+      setIsExportingAccount(false);
+    }
   };
 
   const handleSendVerificationEmail = async () => {
@@ -255,6 +348,16 @@ export const SettingsPage: React.FC = () => {
       if (updateError) {
         setChangePasswordError(updateError.message || 'Failed to update password. Please try again.');
         return;
+      }
+
+      // Record successful password_changed event in audit history
+      try {
+        await supabase.rpc('record_account_activity', {
+          p_event_type: 'password_changed',
+          p_metadata: { method: 'settings_change_password' },
+        });
+      } catch (logErr) {
+        console.error('Failed to log password change activity:', logErr);
       }
 
       setNewPassword('');
@@ -568,25 +671,94 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Data Backup & Export Card */}
-      <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 shadow-2xs space-y-3">
-        <div className="flex items-center gap-2 text-sm font-bold text-[#252B27] pb-2 border-b border-[#E5E9E3]">
-          <Download className="w-4 h-4 text-forest-600" />
-          <span>Offline Data Backup</span>
+      {/* 3. Offline Data Backup & PDF Export Card */}
+      <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 sm:p-6 shadow-2xs space-y-4 text-left">
+        <div className="flex items-center justify-between pb-3 border-b border-[#E5E9E3]">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-[#EAF1EB] text-[#244735]">
+              <Download className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[#252B27]">Offline Data Backup</h3>
+              <p className="text-xs text-[#737C74]">
+                Export your private workspace records and account security history as publication-grade PDF documents.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <p className="text-xs text-[#737C74] leading-relaxed">
-          Download a complete JSON export of all your activity records, follow-ups, categories, and custom field configurations.
-        </p>
+        {exportError && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">Export Error: </span>
+              {exportError}
+            </div>
+          </div>
+        )}
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportJson}
-          leftIcon={<Download className="w-4 h-4" />}
-        >
-          Export Records to JSON ({entries.length} notes)
-        </Button>
+        {exportSuccess && (
+          <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+            <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>{exportSuccess}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          {/* Option A: Export Work Records */}
+          <div className="border border-[#E5E9E3] rounded-xl p-4 bg-[#F7F8F5]/60 hover:bg-[#F7F8F5] transition-colors flex flex-col justify-between space-y-3">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#244735]" />
+                <span className="text-xs font-bold text-[#252B27]">Export Work Records (PDF)</span>
+              </div>
+              <p className="text-xs text-[#737C74] leading-relaxed">
+                Download a complete formatted backup of all your {entries.length} activity records and {followUps.length} follow-up tasks with linked dependencies.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportWorkRecordsPdf}
+                disabled={isExportingRecords || isExportingAccount}
+                isLoading={isExportingRecords}
+                leftIcon={!isExportingRecords ? <FileText className="w-3.5 h-3.5" /> : undefined}
+                className="w-full justify-center bg-white border-[#D2D9CE] hover:bg-[#EAF1EB] text-[#244735] font-semibold"
+              >
+                {isExportingRecords ? 'Generating Work Records PDF...' : 'Export Work Records (PDF)'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Option B: Export Account Details */}
+          <div className="border border-[#E5E9E3] rounded-xl p-4 bg-[#F7F8F5]/60 hover:bg-[#F7F8F5] transition-colors flex flex-col justify-between space-y-3">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#244735]" />
+                <span className="text-xs font-bold text-[#252B27]">Export Account Details (PDF)</span>
+              </div>
+              <p className="text-xs text-[#737C74] leading-relaxed">
+                Download a verified security report containing your registered user profile, account creation date, password change & recovery audit history, and account pause events.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportAccountDetailsPdf}
+                disabled={isExportingRecords || isExportingAccount}
+                isLoading={isExportingAccount}
+                leftIcon={!isExportingAccount ? <ShieldCheck className="w-3.5 h-3.5" /> : undefined}
+                className="w-full justify-center bg-white border-[#D2D9CE] hover:bg-[#EAF1EB] text-[#244735] font-semibold"
+              >
+                {isExportingAccount ? 'Generating Account Report...' : 'Export Account Details (PDF)'}
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Sign Out Button */}
