@@ -248,6 +248,16 @@ export const ForgotPasswordPage: React.FC = () => {
         console.error('record_password_reset error:', recordError);
       }
 
+      // Also ensure logged into account_activity_history if client session active
+      try {
+        await supabase.rpc('record_account_activity', {
+          p_event_type: 'password_reset',
+          p_metadata: { method: 'forgot_password_recovery' },
+        });
+      } catch {
+        // Intentionally ignored: handled server-side by record_password_reset
+      }
+
       // Sign out the temporary recovery session so user logs in fresh
       await supabase.auth.signOut();
 

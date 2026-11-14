@@ -30,6 +30,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             data: { session },
           } = await supabase.auth.getSession();
           if (session?.user) {
+            // Check if account was paused and is now resuming upon sign in
+            const pausedUntil = session.user.user_metadata?.account_paused_until;
+            if (pausedUntil) {
+              try {
+                await supabase.auth.updateUser({
+                  data: { account_paused_until: null },
+                });
+                await supabase.rpc('record_account_activity', {
+                  p_event_type: 'account_resumed',
+                  p_metadata: {
+                    resumed_at: new Date().toISOString(),
+                    scheduled_resume_date: pausedUntil,
+                  },
+                });
+              } catch (resumeErr) {
+                console.error('Error logging account resumption:', resumeErr);
+              }
+            }
+
             let avatarUrl = session.user.user_metadata?.avatar_url;
             if (!avatarUrl) {
               const { data: profile } = await supabase
@@ -170,9 +189,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const pauseAccount = async (days: number): Promise<void> => {
-    const pauseUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date();
+    const pauseUntil = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
     if (isSupabaseConfigured() && supabase) {
       try {
+        // Log account pause event in audit history
+        await supabase.rpc('record_account_activity', {
+          p_event_type: 'account_paused',
+          p_metadata: {
+            pause_days: days,
+            start_date: now.toISOString(),
+            expected_resume_date: pauseUntil,
+          },
+        });
+
         await supabase.auth.updateUser({
           data: { account_paused_until: pauseUntil },
         });
