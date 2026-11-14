@@ -12,7 +12,7 @@ export const AppLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F7F8F5] flex flex-col md:flex-row text-[#252B27]">
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex md:w-64 md:shrink-0 sticky top-0 h-screen">
+      <div className="hidden md:flex md:w-64 md:shrink-0 sticky top-0 h-screen z-20">
         <Sidebar />
       </div>
 

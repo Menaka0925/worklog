@@ -297,10 +297,10 @@ export const DashboardPage: React.FC = () => {
                       key={item.id}
                       onClick={() => handleEditFollowUp(item)}
                       className={`p-3 rounded-lg border transition-all cursor-pointer group ${isDuedOrToday
-                          ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300 hover:bg-rose-50/70 shadow-2xs'
-                          : isTwoDaysWarning
-                            ? 'bg-amber-50/40 border-amber-200 hover:border-amber-300 hover:bg-amber-50/70 shadow-2xs'
-                            : 'bg-[#F7F8F5] border-[#E5E9E3] hover:border-[#C9D1C6] hover:bg-[#F2F5F0]'
+                        ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300 hover:bg-rose-50/70 shadow-2xs'
+                        : isTwoDaysWarning
+                          ? 'bg-amber-50/40 border-amber-200 hover:border-amber-300 hover:bg-amber-50/70 shadow-2xs'
+                          : 'bg-[#F7F8F5] border-[#E5E9E3] hover:border-[#C9D1C6] hover:bg-[#F2F5F0]'
                         }`}
                     >
                       <div className="flex items-start justify-between gap-2">

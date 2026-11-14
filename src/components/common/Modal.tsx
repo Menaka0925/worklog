@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -45,17 +46,17 @@ export const Modal: React.FC<ModalProps> = ({
     '5xl': 'sm:max-w-5xl',
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Backdrop */}
+  return createPortal(
+    <div className="fixed inset-0 z-[9990] overflow-y-auto">
+      {/* Subtle light backdrop with slight blur */}
       <div
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-black/25 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 
       <div className="flex min-h-full items-center justify-center sm:p-4 text-center">
         <div
-          className={`relative transform overflow-hidden bg-white text-left shadow-xl transition-all w-full
+          className={`relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full
             ${
               fullScreenOnMobile
                 ? 'min-h-screen sm:min-h-0 sm:rounded-xl rounded-none'
@@ -93,7 +94,8 @@ export const Modal: React.FC<ModalProps> = ({
           <div className="p-5">{children}</div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

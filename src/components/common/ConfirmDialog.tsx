@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 
@@ -25,30 +26,45 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  // Prevent body scrolling when dialog is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto">
+      {/* Full-screen subtle backdrop with slight blur */}
       <div
-        className="fixed inset-0 bg-[#15291F]/40 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-black/25 backdrop-blur-xs transition-opacity"
         onClick={onCancel}
       />
 
       <div className="flex min-h-full items-center justify-center p-4 text-center">
         <div
-          className="relative transform overflow-hidden rounded-xl bg-white p-6 text-left shadow-xl transition-all w-full max-w-md border border-[#E5E9E3]"
+          className="relative transform overflow-hidden rounded-xl bg-white p-6 text-left shadow-2xl transition-all w-full max-w-md border border-[#E5E9E3] z-10"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-start gap-4">
             <div
               className={`p-2.5 rounded-full shrink-0 ${
-                isDestructive ? 'bg-rose-50 text-rose-700' : 'bg-warm-50 text-warm-700'
+                isDestructive
+                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                  : 'bg-warm-50 text-warm-700 border border-warm-200'
               }`}
             >
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-[#252B27]">{title}</h3>
+              <h3 className="text-base font-bold text-[#252B27]">{title}</h3>
               <p className="mt-1.5 text-xs sm:text-sm text-[#737C74] leading-relaxed">
                 {message}
               </p>
@@ -77,7 +93,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
