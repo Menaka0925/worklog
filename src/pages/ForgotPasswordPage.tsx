@@ -43,7 +43,8 @@ export const ForgotPasswordPage: React.FC = () => {
   const [restrictionMsg, setRestrictionMsg] = useState<{ nextDate: string } | null>(null);
 
   useEffect(() => {
-    if (!supabase) return;
+    const sb = supabase;
+    if (!sb) return;
 
     let isMounted = true;
 
@@ -53,7 +54,7 @@ export const ForgotPasswordPage: React.FC = () => {
       const code = searchParams.get('code');
       if (code) {
         try {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          const { data, error } = await sb.auth.exchangeCodeForSession(code);
           if (!error && data.session && isMounted) {
             if (data.session.user?.email) setEmail(data.session.user.email);
             setStep('password');
@@ -72,7 +73,7 @@ export const ForgotPasswordPage: React.FC = () => {
 
       // 3. Check if user already has an active session from clicking the email link
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await sb.auth.getSession();
         if (session?.user && isMounted) {
           if (session.user.email) setEmail(session.user.email);
           setStep('password');
@@ -85,7 +86,7 @@ export const ForgotPasswordPage: React.FC = () => {
     checkRecoveryState();
 
     // 4. Listen for auth state changes (PASSWORD_RECOVERY or SIGNED_IN from reset link)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
       if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
         if (session?.user?.email) setEmail(session.user.email);

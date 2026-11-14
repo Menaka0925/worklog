@@ -330,7 +330,7 @@ export const DashboardPage: React.FC = () => {
                           </span>
                         )}
 
-                        {diff !== null && !isDuedOrToday && !isTwoDaysWarning && (
+                        {diff !== null && !isDuedOrToday && !isTwoDaysWarning && item.due_date && (
                           <span className="text-[10px] text-[#737C74] font-medium shrink-0">
                             Due {formatDateDisplay(item.due_date)}
                           </span>

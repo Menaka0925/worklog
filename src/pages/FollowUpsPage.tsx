@@ -14,7 +14,7 @@ import { FollowUpCard } from '../components/followups/FollowUpCard';
 import { FollowUpFormModal } from '../components/followups/FollowUpFormModal';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
-import { formatDateDisplay, getTodayDateString } from '../utils/dateUtils';
+import { formatDateDisplay } from '../utils/dateUtils';
 import type { FollowUpItem, FollowUpStatus } from '../types/followup';
 import type { RecordEntry } from '../types/record';
 import { RecordDetailModal } from '../components/calendar/RecordDetailModal';
@@ -83,8 +83,6 @@ export const FollowUpsPage: React.FC = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const todayStr = getTodayDateString();
 
   // Filter and sort follow-ups by Status and Due Date Range, ordered from today's date
   const filteredFollowUps = useMemo(() => {
