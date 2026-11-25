@@ -11,6 +11,8 @@ import { SearchPage } from './pages/SearchPage';
 import { FollowUpsPage } from './pages/FollowUpsPage';
 import { CustomFieldsPage } from './pages/CustomFieldsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import FinanceOverviewPage from './pages/finance/FinanceOverviewPage';
+import TransactionsHistoryPage from './pages/finance/TransactionsHistoryPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { Loader2 } from 'lucide-react';
 
@@ -54,6 +56,8 @@ const AppRoutes: React.FC = () => {
           <Route path="/followups" element={<FollowUpsPage />} />
           <Route path="/custom-fields" element={<CustomFieldsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/finance" element={<FinanceOverviewPage />} />
+          <Route path="/finance/history" element={<TransactionsHistoryPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
