@@ -85,15 +85,6 @@ const getMonthStart = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 };
 
-const getToday = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
-};
-
 const toNumber = (value: number | string | null | undefined) =>
   Number(value ?? 0);
 
@@ -197,8 +188,6 @@ export default function FinanceOverviewPage() {
         for (const transaction of accountTransactions) {
           const amount = toNumber(transaction.amount);
           const isSource = transaction.account_id === account.id;
-          const isDestination =
-            transaction.destination_account_id === account.id;
 
           if (transaction.transaction_type === 'Transfer') {
             account.transferred += amount;
