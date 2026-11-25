@@ -7,6 +7,7 @@ import {
   Search,
   CheckSquare,
   Settings,
+  Wallet,
   LogOut,
   User,
   X,
@@ -30,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
     { label: 'Calendar', to: '/calendar', icon: CalendarDays },
     { label: 'Search History', to: '/search', icon: Search },
     { label: 'Follow-ups', to: '/followups', icon: CheckSquare },
+    { label: 'Finance', to: '/finance', icon: Wallet },
     { label: 'Settings', to: '/settings', icon: Settings },
   ];
 
