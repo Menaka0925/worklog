@@ -833,3 +833,573 @@ export async function exportAccountDetailsPDF(data: AccountDetailsExportData): P
   const filename = `worktrace-account-details-${dateStr}.pdf`;
   doc.save(filename);
 }
+
+// ----------------------------------------------------------------------
+// 3. EXPORT FINANCE HISTORY (PDF)
+// ----------------------------------------------------------------------
+
+export interface FinanceAccountExportRow {
+  id: string;
+  name: string;
+}
+
+export interface FinanceTransactionExportRow {
+  id: string;
+  account_id: string;
+  destination_account_id: string | null;
+  transaction_type: string;
+  category: string;
+  amount: number | string;
+  principal_amount?: number | string | null;
+  interest_amount?: number | string | null;
+  charges_amount?: number | string | null;
+  transaction_date: string;
+  created_at?: string;
+  description: string;
+  party?: string | null;
+  context: 'Personal' | 'Work' | string;
+  payment_method?: string | null;
+  payment_app?: string | null;
+  notes?: string | null;
+}
+
+export interface FinanceHistoryExportData {
+  user: {
+    full_name?: string;
+    email: string;
+  };
+  accounts: FinanceAccountExportRow[];
+  transactions: FinanceTransactionExportRow[];
+}
+
+export async function exportFinanceHistoryPDF(
+  data: FinanceHistoryExportData
+): Promise<void> {
+  const { user, accounts, transactions } = data;
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  const contentWidth = pageWidth - margin * 2;
+
+  const now = new Date();
+  const exportTimestamp = `${now.toISOString().slice(0, 10)} ${now.toTimeString().slice(0, 8)}`;
+
+  // ------------------------------------------------------------
+  // ACCOUNT LOOKUP
+  // ------------------------------------------------------------
+
+  const accountMap = new Map<string, string>();
+
+  accounts.forEach((account) => {
+    accountMap.set(account.id, account.name);
+  });
+
+  const getAccountName = (accountId: string | null | undefined): string => {
+    if (!accountId) return '—';
+    return accountMap.get(accountId) || 'Unknown Account';
+  };
+
+  // ------------------------------------------------------------
+  // AMOUNT FORMATTING
+  // ------------------------------------------------------------
+
+  const formatAmount = (amount: number | string | null | undefined): string => {
+    const numericAmount = Number(amount ?? 0);
+
+    return `₹${numericAmount.toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const getAmountPrefix = (
+    transaction: FinanceTransactionExportRow
+  ): string => {
+    const type = transaction.transaction_type;
+    const category = transaction.category;
+
+    if (
+      type === 'Income' ||
+      type === 'Borrowing' ||
+      type === 'Reimbursement'
+    ) {
+      return '+';
+    }
+
+    if (type === 'Repayment') {
+      return category === 'Received Repayment' ? '+' : '−';
+    }
+
+    if (type === 'Transfer') {
+      return '';
+    }
+
+    return '−';
+  };
+
+  const formatTransactionAmount = (
+    transaction: FinanceTransactionExportRow
+  ): string => {
+    return `${getAmountPrefix(transaction)}${formatAmount(transaction.amount)}`;
+  };
+
+  // ------------------------------------------------------------
+  // DATE FORMATTING
+  // Avoid timezone shifting for YYYY-MM-DD values.
+  // ------------------------------------------------------------
+
+  const formatFinanceDate = (dateValue: string): string => {
+    if (!dateValue) return '—';
+
+    const dateOnly = dateValue.slice(0, 10);
+
+    return formatDateDisplay(dateOnly);
+  };
+
+  // ------------------------------------------------------------
+  // PAYMENT DETAILS
+  // ------------------------------------------------------------
+
+  const getPaymentDetails = (
+    transaction: FinanceTransactionExportRow
+  ): string => {
+    const method = sanitizeText(transaction.payment_method);
+    const app = sanitizeText(transaction.payment_app);
+
+    if (method && app) {
+      return `${method}\nApp: ${app}`;
+    }
+
+    return method || app || '—';
+  };
+
+  // ------------------------------------------------------------
+  // ACCOUNT DETAILS
+  // ------------------------------------------------------------
+
+  const getTransactionAccount = (
+    transaction: FinanceTransactionExportRow
+  ): string => {
+    const sourceAccount = getAccountName(transaction.account_id);
+
+    if (transaction.transaction_type === 'Transfer') {
+      const destinationAccount = getAccountName(
+        transaction.destination_account_id
+      );
+
+      return `${sourceAccount} -> ${destinationAccount}`;
+    }
+
+    return sourceAccount;
+  };
+
+  // ------------------------------------------------------------
+  // NOTES AND LOAN BREAKDOWN
+  // ------------------------------------------------------------
+
+  const getNotesAndBreakdown = (
+    transaction: FinanceTransactionExportRow
+  ): string => {
+    const details: string[] = [];
+
+    if (transaction.notes?.trim()) {
+      details.push(`Notes: ${sanitizeText(transaction.notes)}`);
+    }
+
+    const principal = Number(transaction.principal_amount ?? 0);
+    const interest = Number(transaction.interest_amount ?? 0);
+    const charges = Number(transaction.charges_amount ?? 0);
+
+    if (principal > 0) {
+      details.push(`Principal: ${formatAmount(principal)}`);
+    }
+
+    if (interest > 0) {
+      details.push(`Interest: ${formatAmount(interest)}`);
+    }
+
+    if (charges > 0) {
+      details.push(`Charges: ${formatAmount(charges)}`);
+    }
+
+    return details.length > 0 ? details.join('\n') : '—';
+  };
+
+  // ------------------------------------------------------------
+  // HEADER BANNER
+  // ------------------------------------------------------------
+
+  doc.setFillColor(...COLORS.accentBg);
+  doc.rect(0, 0, pageWidth, 38, 'F');
+
+  doc.setFillColor(...COLORS.primary);
+  doc.rect(0, 0, pageWidth, 3.5, 'F');
+
+  doc.setDrawColor(...COLORS.borderColor);
+  doc.setLineWidth(0.3);
+  doc.line(0, 38, pageWidth, 38);
+
+  // Logo
+  const logo = await loadLogoImage(logoImg);
+
+  if (logo && logo.naturalWidth > 0) {
+    const logoW = 38;
+    const logoH = 38 / (logo.naturalWidth / logo.naturalHeight);
+
+    doc.addImage(logo, 'PNG', margin, 7, logoW, logoH);
+  } else {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(...COLORS.primary);
+    doc.text('WorkTrace', margin, 17);
+  }
+
+  // Header subtitle
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...COLORS.primary);
+  doc.text('Finance History Backup', margin, 25);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...COLORS.textMuted);
+  doc.text(
+    'Your Work. Your Record. | Confidential Financial Backup',
+    margin,
+    30
+  );
+
+  // User information
+  const userLabel = user.full_name
+    ? `${user.full_name} (${user.email})`
+    : user.email;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COLORS.primaryDark);
+  doc.text(userLabel, pageWidth - margin, 14, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLORS.textMuted);
+
+  doc.text(`Exported: ${exportTimestamp}`, pageWidth - margin, 20, {
+    align: 'right',
+  });
+
+  doc.text(
+    `Total Transactions: ${transactions.length} | Accounts: ${accounts.length}`,
+    pageWidth - margin,
+    26,
+    { align: 'right' }
+  );
+
+  let currentY = 46;
+
+  // ------------------------------------------------------------
+  // EXECUTIVE SUMMARY
+  // ------------------------------------------------------------
+
+  doc.setFillColor(...COLORS.accentBg);
+  doc.setDrawColor(...COLORS.borderColor);
+  doc.setLineWidth(0.3);
+
+  doc.roundedRect(
+    margin,
+    currentY,
+    contentWidth,
+    18,
+    2,
+    2,
+    'FD'
+  );
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...COLORS.primaryDark);
+
+  doc.text('FINANCE HISTORY SUMMARY', margin + 4, currentY + 5.5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...COLORS.textDark);
+
+  const summaryColW = contentWidth / 3;
+
+  doc.text(
+    `Total Transactions: ${transactions.length}`,
+    margin + 4,
+    currentY + 13
+  );
+
+  doc.text(
+    `Total Accounts: ${accounts.length}`,
+    margin + 4 + summaryColW,
+    currentY + 13
+  );
+
+  doc.text(
+    `Export Date: ${formatDateDisplay(now.toISOString().slice(0, 10))}`,
+    margin + 4 + summaryColW * 2,
+    currentY + 13
+  );
+
+  currentY += 26;
+
+  // ------------------------------------------------------------
+  // SECTION 1: TRANSACTION HISTORY
+  // ------------------------------------------------------------
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(...COLORS.primary);
+
+  doc.text('1. Finance Transaction History', margin, currentY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COLORS.textMuted);
+
+  doc.text(
+    `Complete register of all ${transactions.length} active finance transactions.`,
+    margin,
+    currentY + 5
+  );
+
+  currentY += 10;
+
+  // Empty state
+  if (transactions.length === 0) {
+    autoTable(doc, {
+      startY: currentY,
+      margin: { left: margin, right: margin },
+      body: [['No finance transactions stored in your WorkTrace account.']],
+      theme: 'plain',
+      styles: {
+        fontSize: 9,
+        textColor: COLORS.textMuted,
+        fontStyle: 'italic',
+      },
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+  } else {
+    // Sort newest first
+    const sortedTransactions = [...transactions].sort((a, b) => {
+      const dateA = a.transaction_date || '';
+      const dateB = b.transaction_date || '';
+
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+
+      return (b.created_at || b.id || '').localeCompare(
+        a.created_at || a.id || ''
+      );
+    });
+
+    const tableBody = sortedTransactions.map((transaction, index) => {
+      const party = sanitizeText(transaction.party) || '—';
+
+      const description =
+        sanitizeText(transaction.description) || '—';
+
+      const category =
+        sanitizeText(transaction.category) || 'Uncategorized';
+
+      const transactionType =
+        sanitizeText(transaction.transaction_type) || '—';
+
+      const account = getTransactionAccount(transaction);
+
+      const payment = getPaymentDetails(transaction);
+
+      const amount = formatTransactionAmount(transaction);
+
+      const context =
+        sanitizeText(transaction.context) || '—';
+
+      const notesAndBreakdown =
+        getNotesAndBreakdown(transaction);
+
+      return [
+        String(index + 1),
+        formatFinanceDate(transaction.transaction_date),
+        description,
+        party,
+        category,
+        transactionType,
+        account,
+        payment,
+        amount,
+        context,
+        notesAndBreakdown,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: currentY,
+      margin: {
+        left: margin,
+        right: margin,
+        top: 12,
+        bottom: 16,
+      },
+
+      head: [
+        [
+          '#',
+          'Date',
+          'Description',
+          'Party / Spent At',
+          'Category',
+          'Type',
+          'Account',
+          'Payment',
+          'Amount',
+          'Context',
+          'Notes / Breakdown',
+        ],
+      ],
+
+      body: tableBody,
+
+      theme: 'grid',
+
+      headStyles: {
+        fillColor: COLORS.primary,
+        textColor: COLORS.white,
+        fontStyle: 'bold',
+        fontSize: 7,
+        halign: 'left',
+        valign: 'middle',
+      },
+
+      styles: {
+        fontSize: 6.8,
+        textColor: COLORS.textDark,
+        cellPadding: 2,
+        overflow: 'linebreak',
+        valign: 'top',
+        lineColor: COLORS.borderColor,
+        lineWidth: 0.2,
+      },
+
+      columnStyles: {
+        0: {
+          cellWidth: 7,
+          halign: 'center',
+        },
+        1: {
+          cellWidth: 19,
+        },
+        2: {
+          cellWidth: 29,
+          fontStyle: 'bold',
+        },
+        3: {
+          cellWidth: 23,
+        },
+        4: {
+          cellWidth: 20,
+        },
+        5: {
+          cellWidth: 19,
+        },
+        6: {
+          cellWidth: 27,
+        },
+        7: {
+          cellWidth: 22,
+        },
+        8: {
+          cellWidth: 21,
+          halign: 'right',
+          fontStyle: 'bold',
+        },
+        9: {
+          cellWidth: 15,
+        },
+        10: {
+          cellWidth: 'auto',
+        },
+      },
+
+      alternateRowStyles: {
+        fillColor: COLORS.accentBg,
+      },
+
+      didParseCell: (hookData) => {
+        // Highlight transaction amount according to transaction direction
+        if (
+          hookData.section === 'body' &&
+          hookData.column.index === 8
+        ) {
+          const rowIndex = hookData.row.index;
+          const transaction = sortedTransactions[rowIndex];
+
+          if (transaction) {
+            const prefix = getAmountPrefix(transaction);
+
+            if (prefix === '+') {
+              hookData.cell.styles.textColor = COLORS.secondary;
+            } else if (prefix === '−') {
+              hookData.cell.styles.textColor = COLORS.red;
+            } else {
+              hookData.cell.styles.textColor = COLORS.primaryDark;
+            }
+          }
+        }
+      },
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 12;
+  }
+
+  // ------------------------------------------------------------
+  // FOOTERS & PAGE NUMBERS
+  // ------------------------------------------------------------
+
+  const totalPages = doc.getNumberOfPages();
+
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+
+    doc.setDrawColor(...COLORS.borderColor);
+    doc.setLineWidth(0.3);
+
+    doc.line(
+      margin,
+      pageHeight - 12,
+      pageWidth - margin,
+      pageHeight - 12
+    );
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COLORS.textMuted);
+
+    doc.text(
+      'WorkTrace – Finance History | Confidential',
+      margin,
+      pageHeight - 7
+    );
+
+    doc.text(
+      `Page ${i} of ${totalPages}`,
+      pageWidth - margin,
+      pageHeight - 7,
+      { align: 'right' }
+    );
+  }
+
+
+  doc.save('finance-history.pdf');
+}

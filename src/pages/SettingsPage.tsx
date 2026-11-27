@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   User,
@@ -26,7 +27,11 @@ import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Modal } from '../components/common/Modal';
 import { formatDateDisplay } from '../utils/dateUtils';
-import { exportWorkRecordsPDF, exportAccountDetailsPDF } from '../utils/pdfExport';
+import {
+  exportWorkRecordsPDF,
+  exportAccountDetailsPDF,
+  exportFinanceHistoryPDF,
+} from '../utils/pdfExport';
 import type { AccountActivityRecord } from '../types/auth';
 
 const SUGGESTED_AVATARS = [
@@ -188,11 +193,12 @@ export const SettingsPage: React.FC = () => {
   // PDF Export States
   const [isExportingRecords, setIsExportingRecords] = useState(false);
   const [isExportingAccount, setIsExportingAccount] = useState(false);
+  const [isExportingFinance, setIsExportingFinance] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
 
   const handleExportWorkRecordsPdf = async () => {
-    if (!user || isExportingRecords || isExportingAccount) return;
+    if (!user || isExportingRecords || isExportingAccount || isExportingFinance) return;
     setIsExportingRecords(true);
     setExportError(null);
     setExportSuccess(null);
@@ -217,7 +223,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleExportAccountDetailsPdf = async () => {
-    if (!user || isExportingRecords || isExportingAccount) return;
+    if (!user || isExportingRecords || isExportingAccount || isExportingFinance) return;
     setIsExportingAccount(true);
     setExportError(null);
     setExportSuccess(null);
@@ -291,9 +297,93 @@ export const SettingsPage: React.FC = () => {
       setExportSuccess('Account Details PDF generated and downloaded successfully.');
     } catch (err: any) {
       console.error('Failed to export account details PDF:', err);
-      setExportError(err?.message || 'Failed to generate Account Details PDF report.');
+      setExportError(err?.message || 'Failed to generate Account Details PDF.');
     } finally {
       setIsExportingAccount(false);
+    }
+  };
+
+  // Export all active finance transactions to PDF
+  const handleExportFinanceHistoryPdf = async () => {
+    if (!user || isExportingRecords || isExportingAccount || isExportingFinance) return;
+
+    setIsExportingFinance(true);
+    setExportError(null);
+    setExportSuccess(null);
+
+    try {
+      if (!supabase || !user.id) {
+        throw new Error('Unable to access your finance data. Please sign in again.');
+      }
+
+      // Fetch all accounts, including archived accounts for historical transactions
+      const { data: accountsData, error: accountsError } = await supabase
+        .from('finance_accounts')
+        .select('id, name')
+        .eq('user_id', user.id);
+
+      if (accountsError) throw accountsError;
+
+      const accounts = accountsData || [];
+
+      // Fetch all active transactions in 1000-row batches
+      const transactions: any[] = [];
+      const batchSize = 1000;
+      let start = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('finance_transactions')
+          .select(`
+            id,
+            account_id,
+            destination_account_id,
+            transaction_type,
+            category,
+            amount,
+            principal_amount,
+            interest_amount,
+            charges_amount,
+            transaction_date,
+            description,
+            party,
+            context,
+            payment_method,
+            payment_app,
+            notes
+          `)
+          .eq('user_id', user.id)
+          .is('deleted_at', null)
+          .order('transaction_date', { ascending: false })
+          .range(start, start + batchSize - 1);
+
+        if (error) throw error;
+
+        const batch = data || [];
+        transactions.push(...batch);
+
+        hasMore = batch.length === batchSize;
+        start += batchSize;
+      }
+
+      await exportFinanceHistoryPDF({
+        user: {
+          full_name: user.full_name,
+          email: user.email,
+        },
+        accounts,
+        transactions,
+      });
+
+      setExportSuccess(
+        `Finance History PDF generated successfully. ${transactions.length} transaction${transactions.length === 1 ? '' : 's'} exported.`
+      );
+    } catch (err: any) {
+      console.error('Failed to export finance history PDF:', err);
+      setExportError(err?.message || 'Failed to generate Finance History PDF report.');
+    } finally {
+      setIsExportingFinance(false);
     }
   };
 
@@ -579,14 +669,14 @@ export const SettingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Danger Zone Card (Below User Account) */}
+      {/* Danger Zone Card */}
       <div className="bg-white rounded-xl border border-rose-200/90 p-5 shadow-2xs space-y-5">
         <div className="flex items-center gap-2 text-sm font-bold text-rose-700 pb-2 border-b border-rose-100">
           <AlertTriangle className="w-4 h-4 text-rose-600" />
           <span>Danger Zone</span>
         </div>
 
-        {/* Action: Reset Password (Above Pause Account) */}
+        {/* Reset Password */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rose-100/70">
           <div className="max-w-xl">
             <h4 className="text-sm font-bold text-[#252B27] flex items-center gap-2">
@@ -616,7 +706,7 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Action A: Account Pause */}
+        {/* Pause Account */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rose-100/70">
           <div className="max-w-xl">
             <h4 className="text-sm font-bold text-[#252B27] flex items-center gap-2">
@@ -642,7 +732,7 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Action B: Permanent Account Deletion */}
+        {/* Permanent Account Deletion */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="max-w-xl">
             <h4 className="text-sm font-bold text-rose-700 flex items-center gap-2">
@@ -671,7 +761,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Offline Data Backup & PDF Export Card */}
+      {/* Offline Data Backup & PDF Export */}
       <div className="bg-white rounded-xl border border-[#E5E9E3] p-5 sm:p-6 shadow-2xs space-y-4 text-left">
         <div className="flex items-center justify-between pb-3 border-b border-[#E5E9E3]">
           <div className="flex items-center gap-2.5">
@@ -704,7 +794,7 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-1">
           {/* Option A: Export Work Records */}
           <div className="border border-[#E5E9E3] rounded-xl p-4 bg-[#F7F8F5]/60 hover:bg-[#F7F8F5] transition-colors flex flex-col justify-between space-y-3">
             <div className="space-y-1.5">
@@ -722,7 +812,7 @@ export const SettingsPage: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onClick={handleExportWorkRecordsPdf}
-                disabled={isExportingRecords || isExportingAccount}
+                disabled={isExportingRecords || isExportingAccount || isExportingFinance}
                 isLoading={isExportingRecords}
                 leftIcon={!isExportingRecords ? <FileText className="w-3.5 h-3.5" /> : undefined}
                 className="w-full justify-center bg-white border-[#D2D9CE] hover:bg-[#EAF1EB] text-[#244735] font-semibold"
@@ -749,12 +839,39 @@ export const SettingsPage: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onClick={handleExportAccountDetailsPdf}
-                disabled={isExportingRecords || isExportingAccount}
+                disabled={isExportingRecords || isExportingAccount || isExportingFinance}
                 isLoading={isExportingAccount}
                 leftIcon={!isExportingAccount ? <ShieldCheck className="w-3.5 h-3.5" /> : undefined}
                 className="w-full justify-center bg-white border-[#D2D9CE] hover:bg-[#EAF1EB] text-[#244735] font-semibold"
               >
                 {isExportingAccount ? 'Generating Account Report...' : 'Export Account Details (PDF)'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Option C: Export Finance History */}
+          <div className="border border-[#E5E9E3] rounded-xl p-4 bg-[#F7F8F5]/60 hover:bg-[#F7F8F5] transition-colors flex flex-col justify-between space-y-3">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#244735]" />
+                <span className="text-xs font-bold text-[#252B27]">Export Finance History (PDF)</span>
+              </div>
+              <p className="text-xs text-[#737C74] leading-relaxed">
+                Download a complete backup of all active financial transactions, including income, expenses, transfers, repayments, payment details, notes, and breakdowns.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportFinanceHistoryPdf}
+                disabled={isExportingRecords || isExportingAccount || isExportingFinance}
+                isLoading={isExportingFinance}
+                leftIcon={!isExportingFinance ? <Download className="w-3.5 h-3.5" /> : undefined}
+                className="w-full justify-center bg-white border-[#D2D9CE] hover:bg-[#EAF1EB] text-[#244735] font-semibold"
+              >
+                {isExportingFinance ? 'Generating Finance History PDF...' : 'Export Finance History (PDF)'}
               </Button>
             </div>
           </div>
@@ -782,7 +899,6 @@ export const SettingsPage: React.FC = () => {
         maxWidth="md"
       >
         <div className="space-y-5 text-left">
-          {/* Suggested Animals & Birds Grid */}
           <div>
             <div className="flex items-center justify-between mb-2.5">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#737C74]">

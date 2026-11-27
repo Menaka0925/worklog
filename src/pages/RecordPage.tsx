@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Plus, BookOpen, Calendar as CalendarIcon, ArrowUpDown, X } from 'lucide-react';
 import { useWorkLog } from '../context/WorkLogContext';
@@ -37,17 +38,18 @@ export const RecordPage: React.FC = () => {
   // Filter entries based on active mode & category
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
-      // Date filter
       if (filterMode === 'today' && entry.activity_date !== todayStr) {
         return false;
       }
+
       if (filterMode === 'custom' && entry.activity_date !== customDate) {
         return false;
       }
-      // Category filter
+
       if (selectedCategory !== 'all' && entry.category !== selectedCategory) {
         return false;
       }
+
       return true;
     });
   }, [entries, filterMode, customDate, todayStr, selectedCategory]);
@@ -57,20 +59,27 @@ export const RecordPage: React.FC = () => {
     return [...filteredEntries].sort((a, b) => {
       const dtA = `${a.activity_date} ${a.activity_time}`;
       const dtB = `${b.activity_date} ${b.activity_time}`;
-      return sortOrder === 'desc' ? dtB.localeCompare(dtA) : dtA.localeCompare(dtB);
+
+      return sortOrder === 'desc'
+        ? dtB.localeCompare(dtA)
+        : dtA.localeCompare(dtB);
     });
   }, [filteredEntries, sortOrder]);
 
-  // Group entries by date when viewing 'All Records'
+  // Group entries by date when viewing All Records
   const groupedEntriesByDate = useMemo(() => {
     if (filterMode !== 'all') return [];
+
     const groups: Record<string, RecordEntry[]> = {};
+
     for (const entry of sortedEntries) {
       if (!groups[entry.activity_date]) {
         groups[entry.activity_date] = [];
       }
+
       groups[entry.activity_date].push(entry);
     }
+
     return Object.entries(groups);
   }, [filterMode, sortedEntries]);
 
@@ -90,21 +99,37 @@ export const RecordPage: React.FC = () => {
 
   const activeDateForModal = filterMode === 'custom' ? customDate : todayStr;
 
+  // Reusable two-column record layout
+  const renderRecordGrid = (recordEntries: RecordEntry[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {recordEntries.map((entry) => (
+        <ActivityCard
+          key={entry.id}
+          entry={entry}
+          onEdit={handleEditNote}
+          onAddFollowUp={handleAddFollowUp}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-5">
-      {/* Unified Single Header Bar */}
+      {/* Unified Header Bar */}
       <div className="bg-white rounded-2xl border border-[#E5E9E3] p-5 shadow-2xs space-y-4">
-        {/* Top Row: Page Title, Record Count & Add Record Button */}
+        {/* Title and Add Record */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl sm:text-2xl font-bold text-[#252B27] tracking-tight">
                 My Records
               </h1>
+
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-forest-100 text-forest-800 border border-forest-200">
                 {sortedEntries.length} {sortedEntries.length === 1 ? 'record' : 'records'}
               </span>
             </div>
+
             <p className="text-xs text-[#737C74] mt-1">
               {filterMode === 'today' && `Today's activity log • ${formatDateDisplay(todayStr)}`}
               {filterMode === 'custom' && `Records for ${formatDateDisplay(customDate)}`}
@@ -124,11 +149,10 @@ export const RecordPage: React.FC = () => {
           </Button>
         </div>
 
-        {/* Integrated Filter & Sort Controls Row */}
+        {/* Filter and Sort */}
         <div className="pt-3.5 border-t border-[#E5E9E3] flex flex-wrap items-center justify-between gap-3">
-          {/* Quick Date Filters */}
+          {/* Date Filters */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Today Filter */}
             <button
               type="button"
               onClick={() => {
@@ -144,7 +168,6 @@ export const RecordPage: React.FC = () => {
               Today
             </button>
 
-            {/* All Records Filter */}
             <button
               type="button"
               onClick={() => setFilterMode('all')}
@@ -157,7 +180,7 @@ export const RecordPage: React.FC = () => {
               All Records
             </button>
 
-            {/* Custom Calendar Date Picker Button */}
+            {/* Custom Date Picker */}
             <div className="relative inline-flex items-center">
               <button
                 type="button"
@@ -173,6 +196,7 @@ export const RecordPage: React.FC = () => {
                     filterMode === 'custom' ? 'text-white' : 'text-forest-600'
                   }`}
                 />
+
                 <span>
                   {filterMode === 'custom' ? formatDateDisplay(customDate) : 'Filter Date'}
                 </span>
@@ -210,7 +234,7 @@ export const RecordPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right: Category filter & Sort by Date/Time */}
+          {/* Category and Sort */}
           <div className="flex items-center gap-2">
             {categories.length > 0 && (
               <select
@@ -219,6 +243,7 @@ export const RecordPage: React.FC = () => {
                 className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[#F7F8F5] border border-[#E5E9E3] text-[#252B27] focus:border-forest-600 focus:ring-1 focus:ring-forest-600 cursor-pointer"
               >
                 <option value="all">All Categories</option>
+
                 {categories.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -243,48 +268,42 @@ export const RecordPage: React.FC = () => {
       {/* List of Activities */}
       <div className="space-y-6">
         {filterMode === 'all' && groupedEntriesByDate.length > 0 ? (
-          // Grouped by date in 'All Records' mode
           groupedEntriesByDate.map(([dateKey, groupEntries]) => (
             <div key={dateKey} className="space-y-3">
-              <div className="flex items-center gap-2 pt-2">
-                <CalendarIcon className="w-4 h-4 text-forest-700" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#252B27]">
-                  {formatDateDisplay(dateKey)}
-                </h3>
-                <span className="text-[11px] font-medium text-[#737C74]">
-                  ({groupEntries.length})
+              {/* Highlighted Date Header */}
+              <div className="flex items-center justify-between rounded-xl border border-[#DCE7D9] bg-[#F0F5EE] px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#244735] text-white">
+                    <CalendarIcon className="w-4 h-4" />
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#244735]">
+                      {formatDateDisplay(dateKey)}
+                    </h3>
+                    <p className="text-[11px] text-[#718174]">
+                      Daily activity records
+                    </p>
+                  </div>
+                </div>
+
+                <span className="rounded-full border border-[#D5E2D3] bg-white px-2.5 py-1 text-xs font-semibold text-[#45634A]">
+                  {groupEntries.length} {groupEntries.length === 1 ? 'record' : 'records'}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {groupEntries.map((entry) => (
-                  <ActivityCard
-                    key={entry.id}
-                    entry={entry}
-                    onEdit={handleEditNote}
-                    onAddFollowUp={handleAddFollowUp}
-                  />
-                ))}
-              </div>
+
+              {renderRecordGrid(groupEntries)}
             </div>
           ))
         ) : sortedEntries.length > 0 ? (
-          // Single day list (2 records per row)
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {sortedEntries.map((entry) => (
-              <ActivityCard
-                key={entry.id}
-                entry={entry}
-                onEdit={handleEditNote}
-                onAddFollowUp={handleAddFollowUp}
-              />
-            ))}
-          </div>
+          renderRecordGrid(sortedEntries)
         ) : null}
 
         {/* Empty State */}
         {sortedEntries.length === 0 && (
           <div className="bg-white rounded-xl border border-dashed border-[#D5DAD3] p-10 text-center">
             <BookOpen className="w-10 h-10 text-[#737C74] mx-auto mb-2" />
+
             <h4 className="text-sm font-semibold text-[#252B27]">
               {filterMode === 'today'
                 ? 'No records logged for today yet'
@@ -292,11 +311,13 @@ export const RecordPage: React.FC = () => {
                 ? `No records found for ${formatDateDisplay(customDate)}`
                 : 'No records found'}
             </h4>
+
             <p className="text-xs text-[#737C74] mt-1 max-w-sm mx-auto">
               {filterMode === 'today'
                 ? 'Start recording tasks, calls, meetings, or notes for today.'
                 : 'Log an activity for this date to keep your work records up to date.'}
             </p>
+
             <Button
               onClick={() => {
                 setEntryToEdit(null);

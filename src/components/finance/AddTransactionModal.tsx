@@ -40,6 +40,8 @@ type FinanceAccountOption = {
 type AddTransactionModalProps = {
   onClose: () => void;
   onSave: (data: TransactionFormData) => void;
+  transactionId?: string;
+  initialData?: TransactionFormData;
 };
 
 const transactionTypes: FinanceTransactionType[] = [
@@ -135,12 +137,18 @@ const initialForm = (): TransactionFormData => ({
 const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   onClose,
   onSave,
+  transactionId,
+  initialData,
 }) => {
-  const [form, setForm] = useState<TransactionFormData>(initialForm());
+  const [form, setForm] = useState<TransactionFormData>(initialData ?? initialForm());
   const [accounts, setAccounts] = useState<FinanceAccountOption[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (initialData) setForm(initialData);
+  }, [initialData]);
 
   // Fetch real accounts from Supabase.
   useEffect(() => {
@@ -172,15 +180,27 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         (account) => account.balance_configured,
       );
 
-      setForm((previous) => ({
-        ...previous,
-        account: previous.account || usableAccounts[0]?.id || '',
-        destinationAccount:
-          previous.destinationAccount ||
-          usableAccounts.find((a) => a.id !== usableAccounts[0]?.id)?.id ||
-          usableAccounts[0]?.id ||
-          '',
-      }));
+      setForm((previous) => {
+        const selectedAccountId = previous.account || usableAccounts[0]?.id || '';
+        const selectedAccount = fetchedAccounts.find(
+          (account) => account.id === selectedAccountId,
+        );
+        const isCashAccount =
+          selectedAccount?.account_type?.toLowerCase().includes('cash') ||
+          selectedAccount?.name.trim().toLowerCase() === 'cash';
+
+        return {
+          ...previous,
+          account: selectedAccountId,
+          paymentMethod: isCashAccount ? 'Cash' : previous.paymentMethod,
+          paymentApp: isCashAccount ? '' : previous.paymentApp,
+          destinationAccount:
+            previous.destinationAccount ||
+            usableAccounts.find((a) => a.id !== usableAccounts[0]?.id)?.id ||
+            usableAccounts[0]?.id ||
+            '',
+        };
+      });
 
       setAccountsLoading(false);
     };
@@ -206,6 +226,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   );
 
   const sourceAccount = accounts.find((account) => account.id === form.account);
+  const isCashAccount =
+    sourceAccount?.account_type?.toLowerCase().includes('cash') ||
+    sourceAccount?.name.trim().toLowerCase() === 'cash';
   const destinationAccount = accounts.find(
     (account) => account.id === form.destinationAccount,
   );
@@ -287,6 +310,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       amount: amount.toFixed(2),
       description: form.description.trim(),
       party: form.party.trim(),
+      paymentApp: form.paymentMethod === 'UPI' ? form.paymentApp : '',
       notes: form.notes.trim(),
       principalAmount: isEMI ? principal!.toFixed(2) : '',
       interestAmount: isEMI ? interest!.toFixed(2) : '',
@@ -295,9 +319,11 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setSaving(true);
 
     try {
-      const { data, error: rpcError } = await supabase.rpc(
-        'finance_create_transaction',
-        {
+      const rpcName = transactionId
+        ? 'finance_update_transaction'
+        : 'finance_create_transaction';
+      const rpcParams: Record<string, unknown> = {
+          ...(transactionId ? { p_transaction_id: transactionId } : {}),
           p_account_id: form.account,
           p_transaction_type: form.type,
           p_category: form.category,
@@ -316,14 +342,14 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           p_principal_amount: isEMI ? principal : null,
           p_interest_amount: isEMI ? interest : null,
           p_charges_amount: 0,
-        },
-      );
+      };
+      const { data, error: rpcError } = await supabase.rpc(rpcName, rpcParams);
 
       if (rpcError) {
         throw rpcError;
       }
 
-      if (!data) {
+      if (!transactionId && !data) {
         throw new Error('The database did not return a transaction ID.');
       }
 
@@ -378,7 +404,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               id="add-transaction-title"
               className="text-lg font-semibold text-[#24372A]"
             >
-              Add Transaction
+              {transactionId ? 'Edit Transaction' : 'Add Transaction'}
             </h2>
             <p className="mt-0.5 text-xs text-[#879188]">
               Record your income, expenses and other money activity.
@@ -625,9 +651,29 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     <select
                       required
                       value={form.account}
-                      onChange={(event) =>
-                        updateField('account', event.target.value)
-                      }
+                      onChange={(event) => {
+                        const accountId = event.target.value;
+                        const selected = accounts.find((account) => account.id === accountId);
+                        const isCashAccount =
+                          selected?.account_type?.toLowerCase().includes('cash') ||
+                          selected?.name.trim().toLowerCase() === 'cash';
+                        const previousAccount = accounts.find(
+                          (account) => account.id === form.account,
+                        );
+                        const wasCashAccount =
+                          previousAccount?.account_type?.toLowerCase().includes('cash') ||
+                          previousAccount?.name.trim().toLowerCase() === 'cash';
+                        setForm((previous) => ({
+                          ...previous,
+                          account: accountId,
+                          ...(isCashAccount
+                            ? { paymentMethod: 'Cash', paymentApp: '' }
+                            : wasCashAccount
+                              ? { paymentMethod: 'UPI', paymentApp: 'Google Pay' }
+                              : {}),
+                        }));
+                        setError('');
+                      }}
                       className={inputClass}
                     >
                       <option value="">Select account</option>
@@ -662,8 +708,11 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     <div>
                       <label className={labelClass}>Payment method *</label>
                       <select
-                        value={form.paymentMethod}
+                        value={isCashAccount ? 'Cash' : form.paymentMethod}
+                        disabled={isCashAccount}
                         onChange={(event) => {
+                          // Cash accounts only support Cash as the payment method.
+                          if (isCashAccount) return;
                           const paymentMethod = event.target.value;
                           setForm((previous) => ({
                             ...previous,
@@ -674,9 +723,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 : '',
                           }));
                         }}
-                        className={inputClass}
+                        className={`${inputClass} ${isCashAccount ? 'cursor-not-allowed bg-gray-100 text-gray-500' : ''}`}
                       >
-                        {paymentMethods.map((method) => (
+                        {(isCashAccount ? ['Cash'] : paymentMethods).map((method) => (
                           <option key={method} value={method}>
                             {method}
                           </option>
@@ -715,8 +764,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               {!isTransfer && (
                 <p className="mt-3 rounded-lg bg-[#F2F5F0] px-3 py-2 text-xs leading-5 text-[#68766A]">
                   The account records where the money is held. The payment method
-                  records how you paid. UPI linked to your bank will not create a
-                  separate account balance.
+                  records how you paid.
                 </p>
               )}
             </section>
@@ -805,7 +853,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               }
               className="rounded-lg bg-[#244735] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1B3928] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save Transaction'}
+              {saving ? 'Saving...' : transactionId ? 'Update Transaction' : 'Save Transaction'}
             </button>
           </div>
         </form>
