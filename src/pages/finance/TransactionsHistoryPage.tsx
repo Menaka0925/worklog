@@ -11,9 +11,17 @@ import {
   Loader2,
   ArrowLeftRight,
   AlertCircle,
+  Pencil,
+  Trash2,
+  ArrowDown,
+  ArrowUp,
+  Plus,
 } from 'lucide-react';
 
 import { supabase } from '../../services/supabaseClient';
+import AddTransactionModal, {
+  type TransactionFormData,
+} from '../../components/finance/AddTransactionModal';
 
 type TransactionType =
   | 'Income'
@@ -56,6 +64,8 @@ type FinanceTransactionRow = {
 
 type Transaction = {
   id: string;
+  accountId: string;
+  destinationAccountId: string | null;
   date: string;
   description: string;
   party: string;
@@ -206,6 +216,8 @@ const mapTransaction = (
 
   return {
     id: row.id,
+    accountId: row.account_id,
+    destinationAccountId: row.destination_account_id,
     date: row.transaction_date,
     description: row.description ?? '',
     party: row.party ?? '',
@@ -254,6 +266,15 @@ const TransactionsHistoryPage: React.FC = () => {
   const [selectedContext, setSelectedContext] = useState('All');
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] =
+    useState<Transaction | null>(null);
+  const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+
+  // Delete confirmation modal state
+  const [transactionToDelete, setTransactionToDelete] =
+    useState<Transaction | null>(null);
 
   const loadTransactions = useCallback(async () => {
     if (!supabase) {
@@ -396,7 +417,6 @@ const TransactionsHistoryPage: React.FC = () => {
     );
   }, [selectedType, allCategories, transactions]);
 
-
   const paymentMethods = useMemo(() => {
     const standardMethods = ['UPI', 'Bank Transfer', 'Debit Card'];
 
@@ -406,7 +426,6 @@ const TransactionsHistoryPage: React.FC = () => {
 
     return [...new Set([...standardMethods, ...savedMethods])].sort();
   }, [transactions]);
-
 
   const filteredTransactions = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -483,6 +502,93 @@ const TransactionsHistoryPage: React.FC = () => {
     selectedContext,
   ]);
 
+  const groupedTransactions = useMemo(() => {
+    const groups = new Map<string, Transaction[]>();
+
+    filteredTransactions.forEach((transaction) => {
+      const group = groups.get(transaction.date) ?? [];
+      group.push(transaction);
+      groups.set(transaction.date, group);
+    });
+
+    return Array.from(groups.entries()).map(([date, items]) => {
+      const received = items.reduce(
+        (sum, transaction) =>
+          getAmountPrefix(transaction) === '+' ? sum + transaction.amount : sum,
+        0,
+      );
+
+      const spent = items.reduce(
+        (sum, transaction) =>
+          getAmountPrefix(transaction) === '−' ? sum + transaction.amount : sum,
+        0,
+      );
+
+      return { date, items, received, spent };
+    });
+  }, [filteredTransactions]);
+
+  const getEditFormData = (transaction: Transaction): TransactionFormData => ({
+    amount: String(transaction.amount),
+    type: transaction.type,
+    date: transaction.date,
+    description: transaction.description,
+    category: transaction.category,
+    context: transaction.context,
+    party: transaction.party,
+    account: transaction.accountId,
+    destinationAccount: transaction.destinationAccountId ?? '',
+    paymentMethod: transaction.paymentMethod || 'UPI',
+    paymentApp: transaction.paymentApp,
+    notes: transaction.notes,
+    principalAmount:
+      transaction.principalAmount === null
+        ? ''
+        : String(transaction.principalAmount),
+    interestAmount:
+      transaction.interestAmount === null
+        ? ''
+        : String(transaction.interestAmount),
+  });
+
+  // Open confirmation dialog
+  const handleRequestDelete = (transaction: Transaction) => {
+    setActionError('');
+    setTransactionToDelete(transaction);
+  };
+
+  // Confirm and delete selected transaction
+  const handleConfirmDelete = async () => {
+    if (!supabase || !transactionToDelete) return;
+
+    const transactionId = transactionToDelete.id;
+
+    setActionError('');
+    setActionBusyId(transactionId);
+
+    try {
+      const { error } = await supabase.rpc('finance_delete_transaction', {
+        p_transaction_id: transactionId,
+      });
+
+      if (error) throw error;
+
+      // Close dialog after successful deletion
+      setTransactionToDelete(null);
+
+      // Reload transaction history
+      await loadTransactions();
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete transaction.',
+      );
+    } finally {
+      setActionBusyId(null);
+    }
+  };
+
   const clearFilters = () => {
     setFromDate('');
     setToDate('');
@@ -510,7 +616,6 @@ const TransactionsHistoryPage: React.FC = () => {
 
   const labelClass =
     'mb-1.5 block text-xs font-medium text-[#778178]';
-
 
   return (
     <div className="min-h-screen bg-[#F7F8F5] px-4 py-6 sm:px-6 lg:px-8">
@@ -543,7 +648,7 @@ const TransactionsHistoryPage: React.FC = () => {
                 type="button"
                 onClick={handleRefresh}
                 disabled={isLoading || isRefreshing}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#E5E9E2] bg-white px-3 py-2.5 text-sm font-medium text-[#46544A] transition hover:bg-[#F5F7F4] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-lg border border-[#E5E9E2] bg-white p-2 text-[#46544A] transition hover:bg-[#F5F7F4] disabled:cursor-not-allowed disabled:opacity-50"
                 title="Refresh transaction history"
               >
                 {isRefreshing ? (
@@ -551,14 +656,13 @@ const TransactionsHistoryPage: React.FC = () => {
                 ) : (
                   <RefreshCw size={16} />
                 )}
-                Refresh
               </button>
 
-              <div className="rounded-lg border border-[#E5E9E2] bg-white px-4 py-2.5 text-sm text-[#68736B]">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-[#E5E9E2] bg-white px-3 py-2 text-xs text-[#68736B]">
+                <span>Transactions</span>
                 <span className="font-semibold text-[#244735]">
-                  {isLoading ? '—' : filteredTransactions.length}
-                </span>{' '}
-                transactions found
+                  [{isLoading ? '—' : filteredTransactions.length}]
+                </span>
               </div>
             </div>
           </div>
@@ -589,6 +693,12 @@ const TransactionsHistoryPage: React.FC = () => {
           </div>
         )}
 
+        {actionError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        )}
+
         {/* Search and filters */}
         <div className="space-y-3">
 
@@ -596,7 +706,7 @@ const TransactionsHistoryPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className="relative min-w-0 flex-1">
               <Search
-                size={18}
+                size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9AA39B]"
               />
 
@@ -605,21 +715,32 @@ const TransactionsHistoryPage: React.FC = () => {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search transactions..."
-                className="w-full rounded-xl border border-[#E4E7E1] bg-white py-3 pl-10 pr-4 text-sm text-[#344238] outline-none placeholder:text-[#A0A9A1] focus:border-[#55765E]"
+                className="w-full rounded-lg border border-[#E4E7E1] bg-white py-2 pl-9 pr-3 text-sm text-[#344238] outline-none placeholder:text-[#A0A9A1] focus:border-[#55765E]"
               />
             </div>
+
+            {/* Add transaction */}
+            <button
+              type="button"
+              onClick={() => setIsAddTransactionOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#244735] bg-[#244735] px-2.5 py-2 text-xs font-medium text-white transition hover:bg-[#1B3928]"
+              title="Add transaction"
+            >
+              <Plus size={15} />
+              <span>Add</span>
+            </button>
 
             {/* Filter toggle */}
             <button
               type="button"
               onClick={() => setIsFilterOpen((previous) => !previous)}
-              className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition ${
+              className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition ${
                 isFilterOpen || activeFilterCount > 0
                   ? 'border-[#244735] bg-[#F0F4EF] text-[#244735]'
                   : 'border-[#E4E7E1] bg-white text-[#46544A] hover:bg-[#F5F7F4]'
               }`}
             >
-              <Filter size={17} />
+              <Filter size={15} />
               <span>Filter</span>
 
               {activeFilterCount > 0 && (
@@ -629,7 +750,7 @@ const TransactionsHistoryPage: React.FC = () => {
               )}
 
               <ChevronDown
-                size={16}
+                size={14}
                 className={`transition-transform ${
                   isFilterOpen ? 'rotate-180' : ''
                 }`}
@@ -862,17 +983,18 @@ const TransactionsHistoryPage: React.FC = () => {
           </div>
 
           <div className="max-h-[650px] overflow-auto">
-            <table className="w-full min-w-[1200px] border-collapse text-left">
+            <table className="w-full min-w-[1300px] border-collapse text-left">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-[#F8FAF7] text-[11px] font-semibold uppercase tracking-wide text-[#7B867D]">
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3">Person / Organisation</th>
+                  <th className="px-4 py-3">Spent At</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Account</th>
                   <th className="px-4 py-3">Payment method</th>
                   <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
 
@@ -881,7 +1003,7 @@ const TransactionsHistoryPage: React.FC = () => {
                 {/* Loading */}
                 {isLoading && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-16 text-center">
+                    <td colSpan={9} className="px-4 py-16 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <Loader2
                           size={26}
@@ -895,101 +1017,159 @@ const TransactionsHistoryPage: React.FC = () => {
                   </tr>
                 )}
 
-                {/* Data rows */}
+                {/* Date groups and transaction rows */}
                 {!isLoading &&
-                  filteredTransactions.map((transaction) => {
-                    const amountPrefix = getAmountPrefix(transaction);
-
-                    return (
-                      <tr
-                        key={transaction.id}
-                        className="transition hover:bg-[#FAFBF9]"
-                      >
-                        {/* Date */}
-                        <td className="whitespace-nowrap px-4 py-4 text-sm text-[#68736B]">
-                          {formatDate(transaction.date)}
-                        </td>
-
-                        {/* Description - no dropdown */}
-                        <td className="min-w-[210px] px-4 py-4">
-                          <div>
-                            <p className="whitespace-nowrap text-sm font-medium text-[#2C3D31]">
-                              {transaction.description}
+                  groupedTransactions.map((group) => (
+                    <React.Fragment key={group.date}>
+                      <tr className="border-y border-[#E6EBE4] bg-[#F5F7F4]">
+                        <td colSpan={9} className="px-4 py-3 sm:px-5">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-[#344638]">
+                              {formatDate(group.date)}
                             </p>
 
-                            <p className="mt-1 text-xs text-[#939C94]">
-                              {transaction.context}
-                            </p>
+                            <div className="flex items-center gap-4 text-xs font-semibold tabular-nums">
+                              {group.spent > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[#B45353]">
+                                  <ArrowDown size={14} />
+                                  {formatAmount(group.spent)}
+                                </span>
+                              )}
+
+                              {group.received > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[#28734A]">
+                                  <ArrowUp size={14} />
+                                  {formatAmount(group.received)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
-
-                        {/* Person / Organisation */}
-                        <td className="px-4 py-4 text-sm text-[#68736B]">
-                          {transaction.party || '—'}
-                        </td>
-
-                        {/* Category */}
-                        <td className="px-4 py-4 text-sm text-[#68736B]">
-                          {transaction.category}
-                        </td>
-
-                        {/* Type */}
-                        <td className="px-4 py-4">
-                          <span
-                            className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${typeStyles[transaction.type]}`}
-                          >
-                            {transaction.type}
-                          </span>
-                        </td>
-
-                        {/* Account / Transfer accounts */}
-                        <td className="px-4 py-4 text-sm text-[#68736B]">
-                          {transaction.type === 'Transfer' ? (
-                            <div className="flex items-center gap-1.5 whitespace-nowrap">
-                              <span>{transaction.account}</span>
-                              <ArrowLeftRight
-                                size={13}
-                                className="shrink-0 text-[#89928A]"
-                              />
-                              <span>
-                                {transaction.destinationAccount || 'Unknown destination'}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="whitespace-nowrap">
-                              {transaction.account}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Payment method */}
-                        <td className="px-4 py-4">
-                          <p className="whitespace-nowrap text-sm text-[#46544A]">
-                            {transaction.paymentMethod || '—'}
-                          </p>
-
-                          {transaction.paymentApp && (
-                            <p className="mt-1 text-xs text-[#939C94]">
-                              {transaction.paymentApp}
-                            </p>
-                          )}
-                        </td>
-
-                        {/* Amount */}
-                        <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-semibold tabular-nums text-[#344238]">
-                          <span className={getAmountColor(transaction)}>
-                            {amountPrefix}
-                            {formatAmount(transaction.amount)}
-                          </span>
-                        </td>
                       </tr>
-                    );
-                  })}
+
+                      {group.items.map((transaction) => {
+                        const amountPrefix = getAmountPrefix(transaction);
+
+                        return (
+                          <tr
+                            key={transaction.id}
+                            className="transition hover:bg-[#FAFBF9]"
+                          >
+                            <td className="whitespace-nowrap px-4 py-4 text-sm text-[#68736B]">
+                              {formatDate(transaction.date)}
+                            </td>
+
+                            <td className="min-w-[210px] px-4 py-4">
+                              <p className="whitespace-nowrap text-sm font-medium text-[#2C3D31]">
+                                {transaction.description}
+                              </p>
+                              <p className="mt-1 text-xs text-[#939C94]">
+                                {transaction.context}
+                              </p>
+                            </td>
+
+                            <td className="px-4 py-4 text-sm text-[#68736B]">
+                              {transaction.party || '—'}
+                            </td>
+
+                            <td className="px-4 py-4 text-sm text-[#68736B]">
+                              {transaction.category}
+                            </td>
+
+                            <td className="px-4 py-4">
+                              <span
+                                className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${typeStyles[transaction.type]}`}
+                              >
+                                {transaction.type}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-4 text-sm text-[#68736B]">
+                              {transaction.type === 'Transfer' ? (
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <span>{transaction.account}</span>
+                                  <ArrowLeftRight
+                                    size={13}
+                                    className="shrink-0 text-[#89928A]"
+                                  />
+                                  <span>
+                                    {transaction.destinationAccount ||
+                                      'Unknown destination'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="whitespace-nowrap">
+                                  {transaction.account}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-4 py-4">
+                              <p className="whitespace-nowrap text-sm text-[#46544A]">
+                                {transaction.paymentMethod || '—'}
+                              </p>
+
+                              {transaction.paymentApp && (
+                                <p className="mt-1 text-xs text-[#939C94]">
+                                  {transaction.paymentApp}
+                                </p>
+                              )}
+                            </td>
+
+                            <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-semibold tabular-nums text-[#344238]">
+                              <span className={getAmountColor(transaction)}>
+                                {amountPrefix}
+                                {formatAmount(transaction.amount)}
+                              </span>
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-4 py-4 text-right">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                {/* Edit */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActionError('');
+                                    setEditingTransaction(transaction);
+                                  }}
+                                  title="Edit transaction"
+                                  aria-label="Edit transaction"
+                                  className="rounded-md border border-[#E2E7E1] p-2 text-[#55765E] transition hover:bg-[#F3F6F2] hover:text-[#244735]"
+                                >
+                                  <Pencil size={15} />
+                                </button>
+
+                                {/* Delete - opens confirmation modal */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRequestDelete(transaction)}
+                                  disabled={actionBusyId === transaction.id}
+                                  title="Delete transaction"
+                                  aria-label="Delete transaction"
+                                  className="rounded-md border border-red-100 p-2 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                                >
+                                  {actionBusyId === transaction.id ? (
+                                    <Loader2
+                                      size={15}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Trash2 size={15} />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
 
                 {/* Empty state */}
                 {!isLoading && filteredTransactions.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-16 text-center">
+                    <td colSpan={9} className="px-4 py-16 text-center">
                       <div className="mx-auto flex max-w-sm flex-col items-center">
                         <Search
                           size={26}
@@ -1044,6 +1224,108 @@ const TransactionsHistoryPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Add / Edit Transaction Modal */}
+      {(isAddTransactionOpen || editingTransaction) && (
+        <AddTransactionModal
+          transactionId={editingTransaction?.id}
+          initialData={
+            editingTransaction
+              ? getEditFormData(editingTransaction)
+              : undefined
+          }
+          onClose={() => {
+            setIsAddTransactionOpen(false);
+            setEditingTransaction(null);
+          }}
+          onSave={async () => {
+            setIsAddTransactionOpen(false);
+            setEditingTransaction(null);
+            await loadTransactions();
+          }}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {transactionToDelete && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 py-5"
+          onClick={(event) => {
+            // Close only when clicking the backdrop, not the dialog itself.
+            if (
+              event.target === event.currentTarget &&
+              actionBusyId !== transactionToDelete.id
+            ) {
+              setTransactionToDelete(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-transaction-title"
+            className="w-full max-w-sm rounded-2xl border border-[#E5E9E2] bg-white p-5 shadow-xl"
+          >
+
+            <h2
+              id="delete-transaction-title"
+              className="text-base font-semibold text-[#FF0000]"
+            >
+              Delete transaction?
+            </h2>
+
+            <p className="mt-1 text-sm text-[#68736B]">
+              Are you sure you want to delete this transaction?
+            </p>
+
+            <div className="mt-3 rounded-lg bg-[#F7F8F5] px-3 py-2.5">
+              <p className="truncate text-sm font-medium text-[#344238]">
+                {transactionToDelete.description ||
+                  transactionToDelete.category}
+              </p>
+
+              <p className="mt-1 text-sm font-semibold text-[#344238]">
+                {formatAmount(transactionToDelete.amount)}
+              </p>
+            </div>
+
+            <p className="mt-3 text-xs leading-5 text-[#89928A]">
+              This will remove it from active history and recalculate the account
+              balance.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              {/* Cancel */}
+              <button
+                type="button"
+                onClick={() => setTransactionToDelete(null)}
+                disabled={actionBusyId === transactionToDelete.id}
+                className="rounded-lg border border-[#E2E7E1] bg-white px-3.5 py-2 text-sm font-medium text-[#46544A] transition hover:bg-[#F5F7F4] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              {/* Confirm Delete */}
+              <button
+                type="button"
+                onClick={() => void handleConfirmDelete()}
+                disabled={actionBusyId === transactionToDelete.id}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {actionBusyId === transactionToDelete.id ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Trash2 size={15} />
+                )}
+
+                {actionBusyId === transactionToDelete.id
+                  ? 'Deleting…'
+                  : 'Delete transaction'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
